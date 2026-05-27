@@ -13,6 +13,10 @@ dependencies = [
 [project.scripts]
 odoo-cli = "odoo_cli.main:app"
 
+[tool.hatch.build.targets.wheel]
+packages = ["odoo_cli"]
+artifacts = ["odoo_cli/ai/skills/*.md"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

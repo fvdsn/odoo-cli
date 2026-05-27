@@ -1,5 +1,9 @@
 """Static content templates for AI context files."""
 
+import re
+from importlib.resources import files as pkg_files
+from pathlib import Path
+
 
 def workspace_overview(config: dict) -> str:
     """Generate the main workspace overview content."""
@@ -76,46 +80,34 @@ Feature branches should be pushed to the dev remote (`odoo-dev`), not `origin`.
 """
 
 
-SKILL_ODOO_CLI = """\
-Use this skill when the user wants to manage their Odoo development environment: \
-starting/stopping the server, updating modules, resetting the database, running tests, \
-executing SQL or Python code, switching versions, or managing repositories.
+def load_skills() -> list[dict]:
+    """Load all skill files from the skills directory.
 
-## Commands
+    Returns a list of dicts with 'name', 'description', 'content' (full file),
+    and 'body' (content without frontmatter).
+    """
+    skills_dir = Path(__file__).parent / "skills"
+    skills = []
+    for path in sorted(skills_dir.glob("*.md")):
+        content = path.read_text()
+        name = path.stem
+        description = ""
+        body = content
 
-All commands run from the workspace root directory.
+        # Parse YAML frontmatter
+        m = re.match(r"^---\n(.*?)\n---\n(.*)", content, re.DOTALL)
+        if m:
+            frontmatter, body = m.group(1), m.group(2).lstrip("\n")
+            for line in frontmatter.splitlines():
+                if line.startswith("name:"):
+                    name = line.split(":", 1)[1].strip()
+                elif line.startswith("description:"):
+                    description = line.split(":", 1)[1].strip()
 
-### Server
-
-- `odoo-cli start` — Start the Odoo server with configured modules and dev mode.
-- `odoo-cli update [modules]` — Update modules without restarting. Defaults to all modules. Runs `--stop-after-init`.
-- `odoo-cli db-reset` — Drop and recreate the database, reinstall configured modules. Requires interactive confirmation.
-
-### Database
-
-- `odoo-cli sql "query"` — Execute a SQL query on the database. Output goes to stdout.
-- `odoo-cli psql` — Open an interactive PostgreSQL shell.
-
-### Python / Odoo Shell
-
-- `odoo-cli shell` — Interactive Python REPL with Odoo environment (`env`, models, cursor).
-- `odoo-cli run "code"` — Execute a Python one-liner in Odoo environment. Non-interactive, suitable for automation.
-
-### Testing
-
-- `odoo-cli test [modules]` — Run tests on a dedicated test database. Defaults to configured modules.
-  - `--tags/-t "tag"` — Filter by test tags.
-  - `--keep-db` — Keep the test database for inspection.
-  - `--verbose/-v` — Show full unfiltered output.
-
-### Repository Management
-
-- `odoo-cli checkout [version]` — Switch all repos to a version branch. Validates version exists, checks for uncommitted changes.
-  - `--yes/-y` — Skip feature branch confirmation (still fails on dirty repos or unpushed commits).
-- `odoo-cli pull` — Pull latest changes (fast-forward only) across all repos.
-- `odoo-cli venv` — Recreate the Python virtual environment with correct Python version and dependencies.
-
-### Configuration
-
-Settings are stored in `config.toml` at the workspace root. The `odoo.conf` file is generated at `odoo/odoo.conf`.
-"""
+        skills.append({
+            "name": name,
+            "description": description,
+            "content": content,
+            "body": body,
+        })
+    return skills

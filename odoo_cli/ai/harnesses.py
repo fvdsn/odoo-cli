@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from odoo_cli.ai.templates import SKILL_ODOO_CLI, workspace_overview
+from odoo_cli.ai.templates import load_skills, workspace_overview
 
 HARNESSES = {
     "claude": "Claude Code",
@@ -17,24 +17,20 @@ def setup_claude(directory: Path, config: dict) -> list[str]:
     """Generate Claude Code context files."""
     files = []
 
-    # CLAUDE.md at workspace root
     path = directory / "CLAUDE.md"
     path.write_text(workspace_overview(config))
     files.append("CLAUDE.md")
 
-    # Skills as custom commands
     commands_dir = directory / ".claude" / "commands"
     commands_dir.mkdir(parents=True, exist_ok=True)
 
-    skill_path = commands_dir / "odoo-cli.md"
-    skill_path.write_text(f"""\
----
-description: Manage Odoo development environment (server, modules, database, tests)
----
-
-{SKILL_ODOO_CLI}
-""")
-    files.append(".claude/commands/odoo-cli.md")
+    for skill in load_skills():
+        # Claude commands use description in frontmatter, body as content
+        skill_path = commands_dir / f"{skill['name']}.md"
+        skill_path.write_text(
+            f"---\ndescription: {skill['description']}\n---\n\n{skill['body']}"
+        )
+        files.append(f".claude/commands/{skill['name']}.md")
 
     return files
 
@@ -43,7 +39,6 @@ def setup_copilot(directory: Path, config: dict) -> list[str]:
     """Generate GitHub Copilot context files."""
     files = []
 
-    # Main instructions
     github_dir = directory / ".github"
     github_dir.mkdir(parents=True, exist_ok=True)
 
@@ -51,20 +46,15 @@ def setup_copilot(directory: Path, config: dict) -> list[str]:
     path.write_text(workspace_overview(config))
     files.append(".github/copilot-instructions.md")
 
-    # Skill as instruction file
     instructions_dir = github_dir / "instructions"
     instructions_dir.mkdir(parents=True, exist_ok=True)
 
-    skill_path = instructions_dir / "odoo-cli.instructions.md"
-    skill_path.write_text(f"""\
----
-description: Manage Odoo development environment (server, modules, database, tests)
-globs: "**"
----
-
-{SKILL_ODOO_CLI}
-""")
-    files.append(".github/instructions/odoo-cli.instructions.md")
+    for skill in load_skills():
+        skill_path = instructions_dir / f"{skill['name']}.instructions.md"
+        skill_path.write_text(
+            f"---\ndescription: {skill['description']}\nglobs: \"**\"\n---\n\n{skill['body']}"
+        )
+        files.append(f".github/instructions/{skill['name']}.instructions.md")
 
     return files
 
@@ -73,9 +63,11 @@ def setup_codex(directory: Path, config: dict) -> list[str]:
     """Generate OpenAI Codex context files."""
     files = []
 
-    path = directory / "AGENTS.md"
     content = workspace_overview(config)
-    content += "\n---\n\n## Skill: odoo-cli\n\n" + SKILL_ODOO_CLI
+    for skill in load_skills():
+        content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
+
+    path = directory / "AGENTS.md"
     path.write_text(content)
     files.append("AGENTS.md")
 
@@ -86,28 +78,20 @@ def setup_opencode(directory: Path, config: dict) -> list[str]:
     """Generate OpenCode context files."""
     files = []
 
-    # AGENTS.md (shared with codex if present, otherwise create)
     agents_path = directory / "AGENTS.md"
     if not agents_path.exists():
         content = workspace_overview(config)
-        content += "\n---\n\n## Skill: odoo-cli\n\n" + SKILL_ODOO_CLI
+        for skill in load_skills():
+            content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
         agents_path.write_text(content)
         files.append("AGENTS.md")
 
-    # Skills in .agents/ (shared with Pi)
-    skills_dir = directory / ".agents" / "skills" / "odoo-cli"
-    skills_dir.mkdir(parents=True, exist_ok=True)
-
-    skill_path = skills_dir / "SKILL.md"
-    skill_path.write_text(f"""\
----
-name: odoo-cli
-description: Manage Odoo development environment (server, modules, database, tests)
----
-
-{SKILL_ODOO_CLI}
-""")
-    files.append(".agents/skills/odoo-cli/SKILL.md")
+    skills_dir = directory / ".agents" / "skills"
+    for skill in load_skills():
+        skill_dir = skills_dir / skill["name"]
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        (skill_dir / "SKILL.md").write_text(skill["content"])
+        files.append(f".agents/skills/{skill['name']}/SKILL.md")
 
     return files
 
@@ -116,29 +100,23 @@ def setup_pi(directory: Path, config: dict) -> list[str]:
     """Generate Pi context files."""
     files = []
 
-    # AGENTS.md (shared with codex/opencode if present, otherwise create)
     agents_path = directory / "AGENTS.md"
     if not agents_path.exists():
         content = workspace_overview(config)
-        content += "\n---\n\n## Skill: odoo-cli\n\n" + SKILL_ODOO_CLI
+        for skill in load_skills():
+            content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
         agents_path.write_text(content)
         files.append("AGENTS.md")
 
-    # Skills in .agents/ (shared with OpenCode)
-    skills_dir = directory / ".agents" / "skills" / "odoo-cli"
-    skills_dir.mkdir(parents=True, exist_ok=True)
-
-    skill_path = skills_dir / "SKILL.md"
-    if not skill_path.exists():
-        skill_path.write_text(f"""\
----
-name: odoo-cli
-description: Manage Odoo development environment (server, modules, database, tests)
----
-
-{SKILL_ODOO_CLI}
-""")
-        files.append(".agents/skills/odoo-cli/SKILL.md")
+    # .agents/skills/ shared with OpenCode
+    skills_dir = directory / ".agents" / "skills"
+    for skill in load_skills():
+        skill_dir = skills_dir / skill["name"]
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_path = skill_dir / "SKILL.md"
+        if not skill_path.exists():
+            skill_path.write_text(skill["content"])
+            files.append(f".agents/skills/{skill['name']}/SKILL.md")
 
     return files
 
