@@ -1,6 +1,7 @@
-from odoo_cli.commands.init import generate_odoo_conf, run_wizard
+from odoo_cli.commands.init import run_wizard
 from odoo_cli.config import save_config
 from odoo_cli.console import console
+from odoo_cli.odoo_conf import generate_odoo_conf
 from odoo_cli.workspace import load_workspace_config
 
 
