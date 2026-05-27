@@ -36,7 +36,7 @@ Commands can be run from the workspace root or any nested directory inside the w
 | `odoo sql "SELECT ..."` | Execute a SQL query |
 | `odoo psql` | Open an interactive PostgreSQL shell |
 | `odoo shell` | Python REPL with Odoo environment |
-| `odoo run "code"` | Execute Python in Odoo environment |
+| `odoo shell -c "code"` | Execute Python in Odoo environment |
 | `odoo rpc '{"model":...}'` | Execute a JSON-RPC call on the server |
 | `odoo checkout [version]` | Switch all repos to a version |
 | `odoo pull` | Pull latest changes across all repos |

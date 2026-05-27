@@ -81,7 +81,7 @@ hints when repository selection, version, or AI harness settings changed.
 | `odoo sql "SELECT ..."` | Execute a SQL query |
 | `odoo psql` | Open an interactive PostgreSQL shell |
 | `odoo shell` | Python REPL with the Odoo environment loaded |
-| `odoo run "code"` | Execute Python code in the Odoo environment |
+| `odoo shell -c "code"` | Execute Python code in the Odoo environment |
 | `odoo rpc '{...}'` | Execute a JSON-RPC call on the Odoo server |
 | `odoo ai-setup` | Regenerate AI context files and skills |
 

@@ -25,7 +25,7 @@ Commands can run from the workspace root or any nested directory inside the work
 ### Python / Odoo Shell
 
 - `odoo shell` — Interactive Python REPL with Odoo environment (`env`, models, cursor).
-- `odoo run "code"` — Execute a Python one-liner in Odoo environment. Non-interactive, suitable for automation.
+- `odoo shell -c "code"` — Execute a Python one-liner in Odoo environment. Non-interactive, suitable for automation.
 
 ### RPC
 

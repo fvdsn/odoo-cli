@@ -71,6 +71,18 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 1)
         self.assertIn("No config.toml found", result.output)
 
+    def test_shell_exposes_command_option(self) -> None:
+        result = self.runner.invoke(app, ["shell", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("--command", result.output)
+        self.assertIn("-c", result.output)
+
+    def test_run_is_not_a_top_level_command(self) -> None:
+        result = self.runner.invoke(app, ["run", "print(1)"])
+
+        self.assertNotEqual(result.exit_code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

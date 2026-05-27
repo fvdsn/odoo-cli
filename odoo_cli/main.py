@@ -37,7 +37,6 @@ COMMANDS = [
     (sql.psql, None),
     (rpc.rpc, None),
     (shell.shell, None),
-    (shell.run, None),
     (test.test, None),
     (ai_setup.ai_setup, "ai-setup"),
 ]
