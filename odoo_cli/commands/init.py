@@ -2,6 +2,7 @@ from pathlib import Path
 
 import typer
 
+from odoo_cli.ai.setup import configured_harnesses, setup_ai_contexts
 from odoo_cli.config import load_config, save_config
 from odoo_cli.console import console
 from odoo_cli.git_utils import add_dev_remote, clone_repo
@@ -42,15 +43,9 @@ def apply_config(directory: Path, config: dict) -> None:
 
     generate_odoo_conf(directory, config)
 
-    # AI context setup
-    if config.get("ai", {}).get("harnesses"):
-        from odoo_cli.ai.harnesses import SETUP_FUNCTIONS, HARNESSES
+    if configured_harnesses(config):
         console.print("\n[bold]Setting up AI context files...[/bold]")
-        for harness in config["ai"]["harnesses"]:
-            setup_fn = SETUP_FUNCTIONS.get(harness)
-            if setup_fn:
-                files = setup_fn(directory, config)
-                console.print(f"  [green]{HARNESSES[harness]}[/green]: {', '.join(files)}")
+        setup_ai_contexts(directory, config)
 
     console.print("\n[green]Workspace initialized successfully.[/green]")
 
