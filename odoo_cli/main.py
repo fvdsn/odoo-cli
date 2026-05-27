@@ -1,6 +1,6 @@
 import typer
 
-from odoo_cli.commands import ai_setup, checkout, db_reset, init, pull, setup_venv, shell, sql, start, test, update
+from odoo_cli.commands import ai_setup, checkout, db_reset, info, init, pull, setup_venv, shell, sql, start, test, update
 
 app = typer.Typer(
     name="odoo-cli",
@@ -8,6 +8,7 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
+app.command()(info.info)
 app.command()(init.init)
 app.command()(checkout.checkout)
 app.command()(pull.pull)

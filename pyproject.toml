@@ -15,7 +15,7 @@ odoo-cli = "odoo_cli.main:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["odoo_cli"]
-artifacts = ["odoo_cli/ai/skills/*.md"]
+artifacts = ["odoo_cli/ai/skills/*.md", "odoo_cli/ai/overview.md"]
 
 [build-system]
 requires = ["hatchling"]

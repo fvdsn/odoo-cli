@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from odoo_cli.ai.templates import load_skills, workspace_overview
+from odoo_cli.ai.templates import load_overview, load_skills
 
 HARNESSES = {
     "claude": "Claude Code",
@@ -18,7 +18,7 @@ def setup_claude(directory: Path, config: dict) -> list[str]:
     files = []
 
     path = directory / "CLAUDE.md"
-    path.write_text(workspace_overview(config))
+    path.write_text(load_overview())
     files.append("CLAUDE.md")
 
     commands_dir = directory / ".claude" / "commands"
@@ -43,7 +43,7 @@ def setup_copilot(directory: Path, config: dict) -> list[str]:
     github_dir.mkdir(parents=True, exist_ok=True)
 
     path = github_dir / "copilot-instructions.md"
-    path.write_text(workspace_overview(config))
+    path.write_text(load_overview())
     files.append(".github/copilot-instructions.md")
 
     instructions_dir = github_dir / "instructions"
@@ -63,7 +63,7 @@ def setup_codex(directory: Path, config: dict) -> list[str]:
     """Generate OpenAI Codex context files."""
     files = []
 
-    content = workspace_overview(config)
+    content = load_overview()
     for skill in load_skills():
         content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
 
@@ -80,7 +80,7 @@ def setup_opencode(directory: Path, config: dict) -> list[str]:
 
     agents_path = directory / "AGENTS.md"
     if not agents_path.exists():
-        content = workspace_overview(config)
+        content = load_overview()
         for skill in load_skills():
             content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
         agents_path.write_text(content)
@@ -102,7 +102,7 @@ def setup_pi(directory: Path, config: dict) -> list[str]:
 
     agents_path = directory / "AGENTS.md"
     if not agents_path.exists():
-        content = workspace_overview(config)
+        content = load_overview()
         for skill in load_skills():
             content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
         agents_path.write_text(content)
