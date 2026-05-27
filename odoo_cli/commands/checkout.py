@@ -4,15 +4,16 @@ from typing import Optional
 import questionary
 import typer
 
-from odoo_cli.config import load_config, save_config
+from odoo_cli.config import save_config
+from odoo_cli.console import console
 from odoo_cli.repos import (
     branch_exists,
     check_repos_before_switch,
     checkout_version,
-    console,
     get_available_versions,
     REPOS,
 )
+from odoo_cli.workspace import load_required_config
 
 
 def checkout(
@@ -29,10 +30,7 @@ def checkout(
     """Checkout a version branch across all repositories."""
     directory = Path.cwd()
 
-    config = load_config(directory)
-    if not config:
-        console.print("[red]No config.toml found. Run 'odoo-cli init' first.[/red]")
-        raise typer.Exit(code=1)
+    config = load_required_config(directory)
 
     if version is None:
         if yes:
@@ -50,9 +48,7 @@ def checkout(
         raise typer.Exit(code=1)
 
     # Safety checks
-    dirty, on_feature_branch, unpushed = check_repos_before_switch(
-        directory, config, version,
-    )
+    dirty, on_feature_branch, unpushed = check_repos_before_switch(directory, config)
 
     if dirty:
         console.print("\n[red bold]Repos with uncommitted changes (blocking):[/red bold]")

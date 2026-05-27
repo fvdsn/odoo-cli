@@ -3,10 +3,13 @@ from pathlib import Path
 
 import questionary
 import typer
-from rich.console import Console
 
 from odoo_cli.config import load_config, save_config
+from odoo_cli.console import console
+from odoo_cli.odoo import configured_addons_paths
 from odoo_cli.postgres import check_connection
+from odoo_cli.venv import setup_venv
+
 COMMUNITY_APPS = [
     "account", "calendar", "contacts", "crm", "data_recycle", "fleet",
     "hr", "hr_attendance", "hr_expense", "hr_holidays", "hr_recruitment",
@@ -32,11 +35,9 @@ ENTERPRISE_APPS = [
 
 from odoo_cli.repos import (
     DEV_REMOTE_URL,
-    console,
     get_available_versions,
     get_repos,
     resolve_branch,
-    setup_venv,
 )
 
 
@@ -358,20 +359,13 @@ def add_dev_remote(repo_dir: Path, repo_name: str, dev_url_template: str) -> Non
 
 
 def generate_odoo_conf(directory: Path, config: dict) -> None:
-    from odoo_cli.repos import repo_name_from_url
-
     conf_path = directory / "odoo" / "odoo.conf"
     pg = config["postgres"]
 
-    addons_paths = [str(directory / "odoo" / "addons")]
-    if config["repositories"]["enterprise"]:
-        addons_paths.append(str(directory / "enterprise"))
-    if config["repositories"]["themes"]:
-        addons_paths.append(str(directory / "themes"))
-    extra_addons = config["repositories"].get("extra_addons", [])
-    addons_dir = directory / "addons"
-    for url in extra_addons:
-        addons_paths.append(str(addons_dir / repo_name_from_url(url)))
+    addons_paths = [
+        str(path)
+        for path in configured_addons_paths(directory, config, only_existing=False)
+    ]
 
     lines = [
         "[options]",

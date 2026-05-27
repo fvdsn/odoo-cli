@@ -4,7 +4,7 @@ CLI tool for Odoo development workflows. Manages multi-repo workspaces, server l
 
 ## Installation
 
-Requires [uv](https://docs.astral.sh/uv/).
+Requires Python 3.10+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv tool install -e .
@@ -46,3 +46,10 @@ Configuration is saved to `config.toml` and reused on subsequent runs.
 | `odoo-cli ai-setup` | Regenerate AI context files and skills |
 
 Run `odoo-cli <command> --help` for detailed usage.
+
+## Development
+
+```bash
+uv run python -m unittest discover -s tests
+uv run python -m compileall -q odoo_cli tests
+```

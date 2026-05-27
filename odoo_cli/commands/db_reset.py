@@ -1,24 +1,19 @@
 import subprocess
-from pathlib import Path
 
 import questionary
 import typer
 
-from odoo_cli.config import load_config
+from odoo_cli.console import console
+from odoo_cli.odoo import current_workspace
 from odoo_cli.postgres import pg_env, terminate_connections
-from odoo_cli.repos import console
 
 
 def db_reset() -> None:
     """Drop and recreate the database."""
-    directory = Path.cwd()
+    workspace = current_workspace()
+    config = workspace.config
 
-    config = load_config(directory)
-    if not config:
-        console.print("[red]No config.toml found. Run 'odoo-cli init' first.[/red]")
-        raise typer.Exit(code=1)
-
-    db_name = config["postgres"]["db_name"]
+    db_name = workspace.database_name
 
     console.print(f"\nThis will [bold red]drop[/bold red] the database [bold]{db_name}[/bold] and all its data.")
     if not questionary.confirm("Are you sure?", default=False).unsafe_ask():
@@ -51,22 +46,20 @@ def db_reset() -> None:
     console.print("[green]done[/green]")
 
     # Install configured modules
-    odoo_config = config.get("odoo", {})
+    odoo_config = workspace.odoo_config
     install_modules = odoo_config.get("install_modules", [])
     if install_modules:
-        odoo_bin = directory / "odoo" / "odoo-bin"
-        odoo_conf = directory / "odoo" / "odoo.conf"
-        venv_python = directory / "odoo" / ".venv" / "bin" / "python"
+        workspace.require_odoo_checkout()
+        workspace.require_venv()
 
         modules_str = ",".join(install_modules)
         console.print(f"  Installing modules [bold]{modules_str}[/bold]...")
 
-        cmd = [
-            str(venv_python), str(odoo_bin),
-            f"--config={odoo_conf}",
+        cmd = workspace.command(
+            f"--config={workspace.odoo_conf}",
             "-i", modules_str,
             "--stop-after-init",
-        ]
+        )
         if not odoo_config.get("demo_data", True):
             cmd.append("--without-demo")
 

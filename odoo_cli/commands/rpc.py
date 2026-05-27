@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from odoo_cli.config import load_config
-from odoo_cli.repos import console
+from odoo_cli.console import console
 
 
 def _jsonrpc(url: str, method: str, params: dict) -> dict:

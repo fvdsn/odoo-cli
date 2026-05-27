@@ -13,6 +13,35 @@ HARNESSES = {
 }
 
 
+def _agents_content() -> str:
+    content = load_overview()
+    for skill in load_skills():
+        content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
+    return content
+
+
+def _write_agents_file(directory: Path, *, overwrite: bool) -> list[str]:
+    path = directory / "AGENTS.md"
+    if path.exists() and not overwrite:
+        return []
+    path.write_text(_agents_content())
+    return ["AGENTS.md"]
+
+
+def _write_agent_skill_files(directory: Path, *, overwrite: bool) -> list[str]:
+    files = []
+    skills_dir = directory / ".agents" / "skills"
+    for skill in load_skills():
+        skill_dir = skills_dir / skill["name"]
+        skill_dir.mkdir(parents=True, exist_ok=True)
+        skill_path = skill_dir / "SKILL.md"
+        if skill_path.exists() and not overwrite:
+            continue
+        skill_path.write_text(skill["content"])
+        files.append(f".agents/skills/{skill['name']}/SKILL.md")
+    return files
+
+
 def setup_claude(directory: Path, config: dict) -> list[str]:
     """Generate Claude Code context files."""
     files = []
@@ -61,63 +90,20 @@ def setup_copilot(directory: Path, config: dict) -> list[str]:
 
 def setup_codex(directory: Path, config: dict) -> list[str]:
     """Generate OpenAI Codex context files."""
-    files = []
-
-    content = load_overview()
-    for skill in load_skills():
-        content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
-
-    path = directory / "AGENTS.md"
-    path.write_text(content)
-    files.append("AGENTS.md")
-
-    return files
+    return _write_agents_file(directory, overwrite=True)
 
 
 def setup_opencode(directory: Path, config: dict) -> list[str]:
     """Generate OpenCode context files."""
-    files = []
-
-    agents_path = directory / "AGENTS.md"
-    if not agents_path.exists():
-        content = load_overview()
-        for skill in load_skills():
-            content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
-        agents_path.write_text(content)
-        files.append("AGENTS.md")
-
-    skills_dir = directory / ".agents" / "skills"
-    for skill in load_skills():
-        skill_dir = skills_dir / skill["name"]
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        (skill_dir / "SKILL.md").write_text(skill["content"])
-        files.append(f".agents/skills/{skill['name']}/SKILL.md")
-
+    files = _write_agents_file(directory, overwrite=False)
+    files.extend(_write_agent_skill_files(directory, overwrite=True))
     return files
 
 
 def setup_pi(directory: Path, config: dict) -> list[str]:
     """Generate Pi context files."""
-    files = []
-
-    agents_path = directory / "AGENTS.md"
-    if not agents_path.exists():
-        content = load_overview()
-        for skill in load_skills():
-            content += f"\n---\n\n## Skill: {skill['name']}\n\n{skill['body']}"
-        agents_path.write_text(content)
-        files.append("AGENTS.md")
-
-    # .agents/skills/ shared with OpenCode
-    skills_dir = directory / ".agents" / "skills"
-    for skill in load_skills():
-        skill_dir = skills_dir / skill["name"]
-        skill_dir.mkdir(parents=True, exist_ok=True)
-        skill_path = skill_dir / "SKILL.md"
-        if not skill_path.exists():
-            skill_path.write_text(skill["content"])
-            files.append(f".agents/skills/{skill['name']}/SKILL.md")
-
+    files = _write_agents_file(directory, overwrite=False)
+    files.extend(_write_agent_skill_files(directory, overwrite=False))
     return files
 
 

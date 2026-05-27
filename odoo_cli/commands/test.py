@@ -1,13 +1,12 @@
 import re
 import subprocess
-from pathlib import Path
 from typing import Optional
 
 import typer
 
-from odoo_cli.config import load_config
+from odoo_cli.console import console
+from odoo_cli.odoo import configured_addons_paths, current_workspace
 from odoo_cli.postgres import pg_env, terminate_connections
-from odoo_cli.repos import console, get_repos
 
 
 def test(
@@ -29,26 +28,12 @@ def test(
     ),
 ) -> None:
     """Run Odoo tests on a dedicated test database."""
-    directory = Path.cwd()
+    workspace = current_workspace(require_odoo=True, require_venv=True)
+    directory = workspace.directory
+    config = workspace.config
 
-    config = load_config(directory)
-    if not config:
-        console.print("[red]No config.toml found. Run 'odoo-cli init' first.[/red]")
-        raise typer.Exit(code=1)
-
-    odoo_bin = directory / "odoo" / "odoo-bin"
-    venv_python = directory / "odoo" / ".venv" / "bin" / "python"
-
-    if not odoo_bin.exists():
-        console.print("[red]odoo/odoo-bin not found. Run 'odoo-cli init' first.[/red]")
-        raise typer.Exit(code=1)
-
-    if not venv_python.exists():
-        console.print("[red]odoo/.venv not found. Run 'odoo-cli venv' first.[/red]")
-        raise typer.Exit(code=1)
-
-    odoo_config = config.get("odoo", {})
-    db_name = config["postgres"]["db_name"] + "-test"
+    odoo_config = workspace.odoo_config
+    db_name = f"{workspace.database_name}-test"
     env = pg_env(config)
 
     # Create fresh test database
@@ -74,14 +59,9 @@ def test(
         installed = odoo_config.get("install_modules", [])
         target_modules = ",".join(installed) if installed else "base"
 
-    repos = get_repos(directory, config)
-    addons_paths = [str(directory / "odoo" / "addons")]
-    for name, _url, dest in repos:
-        if name != "odoo" and dest.exists():
-            addons_paths.append(str(dest))
+    addons_paths = [str(path) for path in configured_addons_paths(directory, config)]
 
-    cmd = [
-        str(venv_python), str(odoo_bin),
+    cmd = workspace.command(
         f"--addons-path={','.join(addons_paths)}",
         "-d", db_name,
         "-i", target_modules,
@@ -91,7 +71,7 @@ def test(
         "--http-port=0",
         "--without-demo",
         "--log-level=test",
-    ]
+    )
 
     if tags:
         cmd.extend(["--test-tags", tags])
@@ -114,7 +94,6 @@ def test(
         in_error_block = False
         summary_line = ""
         tests_run = 0
-        current_module = ""
 
         for line in proc.stdout:
             line = line.rstrip()
@@ -122,8 +101,7 @@ def test(
             # Track module loading progress
             m = re.search(r"Loading module (\w+)", line)
             if m:
-                current_module = m.group(1)
-                console.print(f"  [dim]Loading {current_module}...[/dim]")
+                console.print(f"  [dim]Loading {m.group(1)}...[/dim]")
                 continue
 
             # Print a dot per test to show progress

@@ -1,6 +1,21 @@
 import typer
 
-from odoo_cli.commands import ai_setup, checkout, config, db_reset, info, init, pull, rpc, setup_venv, shell, sql, start, test, update
+from odoo_cli.commands import (
+    ai_setup,
+    checkout,
+    config,
+    db_reset,
+    info,
+    init,
+    pull,
+    rpc,
+    setup_venv,
+    shell,
+    sql,
+    start,
+    test,
+    update,
+)
 
 app = typer.Typer(
     name="odoo-cli",
@@ -8,22 +23,27 @@ app = typer.Typer(
     no_args_is_help=True,
 )
 
-app.command()(info.info)
-app.command()(init.init)
-app.command()(config.config)
-app.command()(checkout.checkout)
-app.command()(pull.pull)
-app.command()(setup_venv.venv)
-app.command()(start.start)
-app.command()(update.update)
-app.command("db-reset")(db_reset.db_reset)
-app.command()(sql.sql)
-app.command()(sql.psql)
-app.command()(rpc.rpc)
-app.command()(shell.shell)
-app.command()(shell.run)
-app.command()(test.test)
-app.command("ai-setup")(ai_setup.ai_setup)
+COMMANDS = [
+    (info.info, None),
+    (init.init, None),
+    (config.config, None),
+    (checkout.checkout, None),
+    (pull.pull, None),
+    (setup_venv.venv, None),
+    (start.start, None),
+    (update.update, None),
+    (db_reset.db_reset, "db-reset"),
+    (sql.sql, None),
+    (sql.psql, None),
+    (rpc.rpc, None),
+    (shell.shell, None),
+    (shell.run, None),
+    (test.test, None),
+    (ai_setup.ai_setup, "ai-setup"),
+]
+
+for callback, name in COMMANDS:
+    app.command(name)(callback)
 
 if __name__ == "__main__":
     app()

@@ -1,11 +1,10 @@
 import subprocess
-from pathlib import Path
 from typing import Optional
 
 import typer
 
-from odoo_cli.config import load_config
-from odoo_cli.repos import console
+from odoo_cli.console import console
+from odoo_cli.odoo import current_workspace
 
 
 def update(
@@ -15,33 +14,15 @@ def update(
     ),
 ) -> None:
     """Update module(s) in the database without starting the server."""
-    directory = Path.cwd()
-
-    config = load_config(directory)
-    if not config:
-        console.print("[red]No config.toml found. Run 'odoo-cli init' first.[/red]")
-        raise typer.Exit(code=1)
-
-    odoo_bin = directory / "odoo" / "odoo-bin"
-    odoo_conf = directory / "odoo" / "odoo.conf"
-    venv_python = directory / "odoo" / ".venv" / "bin" / "python"
-
-    if not odoo_bin.exists():
-        console.print("[red]odoo/odoo-bin not found. Run 'odoo-cli init' first.[/red]")
-        raise typer.Exit(code=1)
-
-    if not venv_python.exists():
-        console.print("[red]odoo/.venv not found. Run 'odoo-cli venv' first.[/red]")
-        raise typer.Exit(code=1)
+    workspace = current_workspace(require_odoo=True, require_venv=True)
 
     target = modules or "all"
 
-    cmd = [
-        str(venv_python), str(odoo_bin),
-        f"--config={odoo_conf}",
+    cmd = workspace.command(
+        f"--config={workspace.odoo_conf}",
         "-u", target,
         "--stop-after-init",
-    ]
+    )
 
     console.print(f"Updating [bold]{target}[/bold]...")
     console.print(f"[dim]$ {' '.join(cmd)}[/dim]\n")

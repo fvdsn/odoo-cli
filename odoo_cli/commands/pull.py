@@ -1,20 +1,16 @@
 import subprocess
 from pathlib import Path
 
-import typer
-
-from odoo_cli.config import load_config
-from odoo_cli.repos import console, get_repos
+from odoo_cli.console import console
+from odoo_cli.repos import get_repos
+from odoo_cli.workspace import load_required_config
 
 
 def pull() -> None:
     """Pull latest changes from origin across all repositories."""
     directory = Path.cwd()
 
-    config = load_config(directory)
-    if not config:
-        console.print("[red]No config.toml found. Run 'odoo-cli init' first.[/red]")
-        raise typer.Exit(code=1)
+    config = load_required_config(directory)
 
     repos = get_repos(directory, config)
 

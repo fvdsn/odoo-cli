@@ -36,8 +36,14 @@ def terminate_connections(config: dict, db_name: str) -> None:
     """Terminate all connections to the given database."""
     env = pg_env(config)
     subprocess.run(
-        ["psql", "-d", "postgres", "-c",
-         f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-         f"WHERE datname = '{db_name}' AND pid <> pg_backend_pid();"],
-        capture_output=True, text=True, env=env,
+        [
+            "psql", "-d", "postgres",
+            "-v", f"db_name={db_name}",
+            "-c",
+            "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            "WHERE datname = :'db_name' AND pid <> pg_backend_pid();",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
     )

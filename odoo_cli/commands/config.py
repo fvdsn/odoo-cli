@@ -1,20 +1,16 @@
 from pathlib import Path
 
-import typer
-
-from odoo_cli.config import load_config, save_config
 from odoo_cli.commands.init import generate_odoo_conf, run_wizard
-from odoo_cli.repos import console
+from odoo_cli.config import save_config
+from odoo_cli.console import console
+from odoo_cli.workspace import load_required_config
 
 
 def config() -> None:
     """Update the workspace configuration."""
     directory = Path.cwd()
 
-    existing = load_config(directory)
-    if not existing:
-        console.print("[red]No config.toml found. Run 'odoo-cli init' first.[/red]")
-        raise typer.Exit(code=1)
+    existing = load_required_config(directory)
 
     new_config = run_wizard(existing)
     save_config(directory, new_config)

@@ -2,9 +2,7 @@ import re
 import subprocess
 from pathlib import Path
 
-from rich.console import Console
-
-console = Console()
+from odoo_cli.console import console
 
 REPOS = {
     "odoo": "git@github.com:odoo/odoo.git",
@@ -90,61 +88,6 @@ def resolve_branch(url: str, branch: str) -> str | None:
     return None
 
 
-def get_min_python_version(directory: Path) -> str | None:
-    """Read MIN_PY_VERSION from odoo/release.py and return as e.g. '3.12'."""
-    release_py = directory / "odoo" / "odoo" / "release.py"
-    if not release_py.exists():
-        return None
-    content = release_py.read_text()
-    m = re.search(r"MIN_PY_VERSION\s*=\s*\((\d+),\s*(\d+)\)", content)
-    if not m:
-        return None
-    return f"{m.group(1)}.{m.group(2)}"
-
-
-def setup_venv(directory: Path) -> bool:
-    """Create (or recreate) the venv in odoo/.venv with the right Python version."""
-    python_version = get_min_python_version(directory)
-    venv_path = directory / "odoo" / ".venv"
-
-    cmd = ["uv", "venv", str(venv_path)]
-    if python_version:
-        cmd.extend(["--python", python_version])
-        console.print(f"  Setting up venv with Python {python_version}...")
-    else:
-        console.print("  Setting up venv with system Python...")
-
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        console.print(f"  [red]Failed to create venv:[/red] {result.stderr.strip()}")
-        return False
-
-    # Install requirements
-    venv_python = str(venv_path / "bin" / "python")
-    requirements = directory / "odoo" / "requirements.txt"
-    if requirements.exists():
-        console.print("  Installing build dependencies...")
-        subprocess.run(
-            ["uv", "pip", "install", "--python", venv_python, "setuptools<81", "wheel"],
-            capture_output=True, text=True,
-        )
-        console.print("  Installing requirements...")
-        result = subprocess.run(
-            ["uv", "pip", "install",
-             "--python", venv_python,
-             "--no-build-isolation",
-             "-r", str(requirements)],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            console.print(f"  [red]Failed to install requirements:[/red] {result.stderr.strip()}")
-            return False
-
-    console.print("  [green]venv ready[/green]")
-    return True
-
-
 def repo_name_from_url(url: str) -> str:
     return url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
 
@@ -205,7 +148,7 @@ def get_repo_status(dest: Path) -> dict:
 
 
 def check_repos_before_switch(
-    directory: Path, config: dict, target_version: str,
+    directory: Path, config: dict,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[tuple[str, int]]]:
     """Check all repos for blockers and warnings before version switch.
 

@@ -2,7 +2,8 @@ from pathlib import Path
 
 import typer
 
-from odoo_cli.repos import console, setup_venv
+from odoo_cli.console import console
+from odoo_cli.venv import setup_venv
 
 
 def venv() -> None:
