@@ -11,7 +11,7 @@ def venv() -> None:
 
     odoo_dir = directory / "odoo"
     if not odoo_dir.exists():
-        console.print("[red]odoo/ not found. Run 'odoo-cli init' first.[/red]")
+        console.print("[red]odoo/ not found. Run 'odoo init' first.[/red]")
         raise typer.Exit(code=1)
 
     if not setup_venv(directory):

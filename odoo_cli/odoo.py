@@ -48,12 +48,12 @@ class OdooWorkspace:
 
     def require_odoo_checkout(self) -> None:
         if not self.odoo_bin.exists():
-            console.print("[red]odoo/odoo-bin not found. Run 'odoo-cli init' first.[/red]")
+            console.print("[red]odoo/odoo-bin not found. Run 'odoo init' first.[/red]")
             raise typer.Exit(code=1)
 
     def require_venv(self) -> None:
         if not self.venv_python.exists():
-            console.print("[red]odoo/.venv not found. Run 'odoo-cli venv' first.[/red]")
+            console.print("[red]odoo/.venv not found. Run 'odoo venv' first.[/red]")
             raise typer.Exit(code=1)
 
     def command(self, *args: str) -> list[str]:

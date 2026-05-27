@@ -1,6 +1,6 @@
 # Odoo Development Workspace
 
-This is an Odoo development workspace managed by `odoo-cli`.
+This is an Odoo development workspace managed by `odoo`.
 
 ## Repository Structure
 
@@ -20,27 +20,27 @@ The workspace may contain the following repositories (not all may be present):
 
 ## Getting Workspace Info
 
-Run `odoo-cli info` to get current workspace details (version, database, port, installed modules).
+Run `odoo info` to get current workspace details (version, database, port, installed modules).
 
 ## CLI Tool
 
-All commands should be run from the workspace root.
+Commands can be run from the workspace root or any nested directory inside the workspace.
 
 | Command | Description |
 |---|---|
-| `odoo-cli info` | Show current workspace configuration |
-| `odoo-cli start` | Start the Odoo server |
-| `odoo-cli update [modules]` | Update modules (default: all) |
-| `odoo-cli db-reset` | Drop and recreate the database |
-| `odoo-cli test [modules]` | Run tests on a dedicated test database |
-| `odoo-cli sql "SELECT ..."` | Execute a SQL query |
-| `odoo-cli psql` | Open an interactive PostgreSQL shell |
-| `odoo-cli shell` | Python REPL with Odoo environment |
-| `odoo-cli run "code"` | Execute Python in Odoo environment |
-| `odoo-cli rpc '{"model":...}'` | Execute a JSON-RPC call on the server |
-| `odoo-cli checkout [version]` | Switch all repos to a version |
-| `odoo-cli pull` | Pull latest changes across all repos |
-| `odoo-cli venv` | Recreate the Python virtual environment |
+| `odoo info` | Show current workspace configuration |
+| `odoo start` | Start the Odoo server |
+| `odoo update [modules]` | Update modules (default: all) |
+| `odoo db-reset` | Drop and recreate the database |
+| `odoo test [modules]` | Run tests on a dedicated test database |
+| `odoo sql "SELECT ..."` | Execute a SQL query |
+| `odoo psql` | Open an interactive PostgreSQL shell |
+| `odoo shell` | Python REPL with Odoo environment |
+| `odoo run "code"` | Execute Python in Odoo environment |
+| `odoo rpc '{"model":...}'` | Execute a JSON-RPC call on the server |
+| `odoo checkout [version]` | Switch all repos to a version |
+| `odoo pull` | Pull latest changes across all repos |
+| `odoo venv` | Recreate the Python virtual environment |
 
 ## Python Environment
 

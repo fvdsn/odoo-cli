@@ -50,7 +50,7 @@ def config_path(directory: Path) -> Path:
 
 
 def is_workspace_config(config: dict) -> bool:
-    """Return whether a parsed TOML dict looks like an odoo-cli workspace config."""
+    """Return whether a parsed TOML dict looks like an odoo workspace config."""
     return WORKSPACE_CONFIG_KEYS.issubset(config)
 
 

@@ -9,7 +9,7 @@ from odoo_cli.console import console
 
 
 def find_workspace_root(start: Path | None = None) -> Path | None:
-    """Find the nearest parent containing an odoo-cli config.toml."""
+    """Find the nearest parent containing an odoo config.toml."""
     current = (start or Path.cwd()).resolve()
     if current.is_file():
         current = current.parent
@@ -30,7 +30,7 @@ def require_workspace_root(start: Path | None = None) -> Path:
     if directory is None:
         console.print(
             "[red]No config.toml found in this directory or its parents. "
-            "Run 'odoo-cli init' first.[/red]"
+            "Run 'odoo init' first.[/red]"
         )
         raise typer.Exit(code=1)
     return directory
@@ -40,7 +40,7 @@ def load_required_config(directory: Path) -> dict:
     """Load config.toml or exit with a consistent CLI error."""
     config = load_config(directory)
     if not config or not is_workspace_config(config):
-        console.print("[red]No config.toml found. Run 'odoo-cli init' first.[/red]")
+        console.print("[red]No config.toml found. Run 'odoo init' first.[/red]")
         raise typer.Exit(code=1)
     return config
 

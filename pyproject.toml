@@ -29,6 +29,7 @@ dependencies = [
 ]
 
 [project.scripts]
+odoo = "odoo_cli.main:app"
 odoo-cli = "odoo_cli.main:app"
 
 [tool.ruff]

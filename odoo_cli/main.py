@@ -18,7 +18,7 @@ from odoo_cli.commands import (
 )
 
 app = typer.Typer(
-    name="odoo-cli",
+    name="odoo",
     help="CLI tool for Odoo development workflows.",
     no_args_is_help=True,
 )

@@ -19,11 +19,11 @@ def config() -> None:
     # Print hints for manual steps
     hints = []
     if new_config["version"] != existing.get("version"):
-        hints.append("  odoo-cli checkout    # version changed")
+        hints.append("  odoo checkout    # version changed")
     if new_config["repositories"] != existing.get("repositories"):
-        hints.append("  odoo-cli init        # repository selection changed, re-run init to clone")
+        hints.append("  odoo init        # repository selection changed, re-run init to clone")
     if new_config.get("ai") != existing.get("ai"):
-        hints.append("  odoo-cli ai-setup    # AI harnesses changed")
+        hints.append("  odoo ai-setup    # AI harnesses changed")
 
     if hints:
         console.print("\n[yellow]To apply all changes, run:[/yellow]")

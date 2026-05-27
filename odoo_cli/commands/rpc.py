@@ -61,7 +61,7 @@ def rpc(
     if directory is None:
         console.print(
             "[red]No config.toml found in this directory or its parents. "
-            "Run 'odoo-cli init' first.[/red]",
+            "Run 'odoo init' first.[/red]",
             file=sys.stderr,
         )
         raise typer.Exit(code=1)

@@ -11,7 +11,7 @@ def ai_setup() -> None:
 
     if not configured_harnesses(config):
         console.print(
-            "[yellow]No AI harnesses configured. Run 'odoo-cli init' to set them up.[/yellow]"
+            "[yellow]No AI harnesses configured. Run 'odoo init' to set them up.[/yellow]"
         )
         raise typer.Exit(code=1)
 

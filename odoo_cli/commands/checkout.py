@@ -79,4 +79,4 @@ def checkout(
     checkout_version(directory, config, version)
 
     console.print(f"\n[green]All repositories switched to {version}.[/green]")
-    console.print("[dim]Run 'odoo-cli venv' if you need to update the Python environment.[/dim]")
+    console.print("[dim]Run 'odoo venv' if you need to update the Python environment.[/dim]")
