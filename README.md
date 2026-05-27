@@ -22,6 +22,7 @@ Interactive wizard that sets up:
 - Python virtual environment
 - PostgreSQL connection
 - `odoo.conf` generation
+- AI context files for coding assistants (Claude, Copilot, Codex, OpenCode, Pi)
 
 Configuration is saved to `config.toml` and reused on subsequent runs.
 
@@ -41,5 +42,6 @@ Configuration is saved to `config.toml` and reused on subsequent runs.
 | `odoo-cli psql` | Open an interactive PostgreSQL shell |
 | `odoo-cli shell` | Python REPL with the Odoo environment loaded |
 | `odoo-cli run "code"` | Execute Python code in the Odoo environment |
+| `odoo-cli ai-setup` | Regenerate AI context files and skills |
 
 Run `odoo-cli <command> --help` for detailed usage.
