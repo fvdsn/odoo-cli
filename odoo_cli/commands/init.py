@@ -65,10 +65,10 @@ def init(
 
     config = load_config(directory)
     if config:
-        console.print(f"Found [bold]config.toml[/bold] in {directory}, skipping wizard.")
+        console.print(f"Found [bold]odoo-workspace.toml[/bold] in {directory}, skipping wizard.")
     else:
         config = run_wizard()
         save_config(directory, config)
-        console.print(f"\nSaved configuration to [bold]{directory}/config.toml[/bold]")
+        console.print(f"\nSaved configuration to [bold]{directory}/odoo-workspace.toml[/bold]")
 
     apply_config(directory, config)

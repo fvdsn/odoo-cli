@@ -69,7 +69,19 @@ class CliTests(unittest.TestCase):
                 os.chdir(cwd)
 
         self.assertEqual(result.exit_code, 1)
-        self.assertIn("No config.toml found", result.output)
+        self.assertIn("No odoo-workspace.toml found", result.output)
+
+    def test_doctor_errors_outside_workspace(self) -> None:
+        cwd = Path.cwd()
+        with tempfile.TemporaryDirectory() as tmp:
+            try:
+                os.chdir(tmp)
+                result = self.runner.invoke(app, ["doctor"])
+            finally:
+                os.chdir(cwd)
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("No odoo-workspace.toml found", result.output)
 
     def test_shell_exposes_command_option(self) -> None:
         result = self.runner.invoke(app, ["shell", "--help"])
@@ -82,6 +94,12 @@ class CliTests(unittest.TestCase):
         result = self.runner.invoke(app, ["run", "print(1)"])
 
         self.assertNotEqual(result.exit_code, 0)
+
+    def test_doctor_is_a_top_level_command(self) -> None:
+        result = self.runner.invoke(app, ["doctor", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("common setup problems", result.output)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ from pathlib import Path
 import tomli_w
 import tomllib
 
-CONFIG_FILENAME = "config.toml"
+CONFIG_FILENAME = "odoo-workspace.toml"
 WORKSPACE_CONFIG_KEYS = {"repositories", "postgres", "odoo"}
 
 DEFAULT_CONFIG = {

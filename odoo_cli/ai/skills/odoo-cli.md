@@ -13,6 +13,7 @@ Commands can run from the workspace root or any nested directory inside the work
 
 ### Server
 
+- `odoo doctor` — Check the workspace for common setup problems.
 - `odoo start` — Start the Odoo server with configured modules and dev mode.
 - `odoo update [modules]` — Update modules without restarting. Defaults to all modules. Runs `--stop-after-init`.
 - `odoo db-reset` — Drop and recreate the database, reinstall configured modules. Requires interactive confirmation.
@@ -48,4 +49,4 @@ Commands can run from the workspace root or any nested directory inside the work
 
 ### Configuration
 
-Settings are stored in `config.toml` at the workspace root. The `odoo.conf` file is generated at `odoo/odoo.conf`.
+Settings are stored in `odoo-workspace.toml` at the workspace root. The `odoo.conf` file is generated at `odoo/odoo.conf`.

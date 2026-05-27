@@ -27,7 +27,7 @@ Interactive wizard that sets up:
 - `odoo.conf` generation
 - AI context files for coding assistants (Claude, Copilot, Codex, OpenCode, Pi)
 
-Configuration is saved to `config.toml` and reused on subsequent runs.
+Configuration is saved to `odoo-workspace.toml` and reused on subsequent runs.
 After initialization, commands can be run from the workspace root or any nested
 directory inside the workspace.
 
@@ -38,7 +38,7 @@ one or more Odoo repositories:
 
 ```text
 workspace/
-  config.toml
+  odoo-workspace.toml
   odoo/
     odoo.conf
     .venv/
@@ -48,7 +48,7 @@ workspace/
   addons/
 ```
 
-`config.toml` is the workspace marker. Existing-workspace commands search the
+`odoo-workspace.toml` is the workspace marker. Existing-workspace commands search the
 current directory and its parents for the nearest valid `odoo` config, so
 commands work from nested paths like `odoo/addons/sale`.
 
@@ -58,6 +58,7 @@ commands work from nested paths like `odoo/addons/sale`.
 odoo init ~/src/odoo-workspace
 cd ~/src/odoo-workspace/odoo/addons/sale
 odoo info
+odoo doctor
 odoo start
 odoo update sale
 odoo test sale --tags test_sale
@@ -71,6 +72,7 @@ hints when repository selection, version, or AI harness settings changed.
 | Command | Description |
 |---|---|
 | `odoo init [dir]` | Set up a new Odoo workspace |
+| `odoo doctor` | Check the workspace for common setup problems |
 | `odoo checkout [version]` | Switch all repos to a version branch |
 | `odoo pull` | Pull latest changes across all repos |
 | `odoo venv` | Set up or recreate the Python virtual environment |

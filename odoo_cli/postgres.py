@@ -2,6 +2,11 @@ import os
 import subprocess
 
 
+def sql_literal(value: str) -> str:
+    """Return a single-quoted SQL string literal."""
+    return "'" + value.replace("'", "''") + "'"
+
+
 def pg_env(config: dict) -> dict[str, str]:
     """Build environment dict with PG* variables from config."""
     env = dict(os.environ)
@@ -41,11 +46,9 @@ def terminate_connections(config: dict, db_name: str) -> None:
             "psql",
             "-d",
             "postgres",
-            "-v",
-            f"db_name={db_name}",
             "-c",
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            "WHERE datname = :'db_name' AND pid <> pg_backend_pid();",
+            f"WHERE datname = {sql_literal(db_name)} AND pid <> pg_backend_pid();",
         ],
         capture_output=True,
         text=True,

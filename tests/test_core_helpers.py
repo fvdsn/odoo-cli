@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from odoo_cli.config import load_config, normalize_config, save_config
 from odoo_cli.odoo import configured_addons_paths
-from odoo_cli.postgres import terminate_connections
+from odoo_cli.postgres import sql_literal, terminate_connections
 from odoo_cli.workspace import find_workspace_root
 
 
@@ -113,7 +113,10 @@ class OdooPathTests(unittest.TestCase):
 
 
 class PostgresTests(unittest.TestCase):
-    def test_terminate_connections_uses_psql_variable_for_db_name(self) -> None:
+    def test_sql_literal_escapes_quotes(self) -> None:
+        self.assertEqual(sql_literal("demo'db"), "'demo''db'")
+
+    def test_terminate_connections_escapes_db_name(self) -> None:
         with patch("odoo_cli.postgres.subprocess.run") as run:
             terminate_connections(
                 {
@@ -128,9 +131,7 @@ class PostgresTests(unittest.TestCase):
             )
 
         cmd = run.call_args.args[0]
-        self.assertIn("-v", cmd)
-        self.assertIn("db_name=demo'db", cmd)
-        self.assertIn("WHERE datname = :'db_name'", " ".join(cmd))
+        self.assertIn("WHERE datname = 'demo''db'", " ".join(cmd))
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@ The workspace may contain the following repositories (not all may be present):
 
 ## Configuration
 
-- `config.toml` — Workspace configuration (version, repos, postgres, modules)
+- `odoo-workspace.toml` — Workspace configuration (version, repos, postgres, modules)
 - `odoo/odoo.conf` — Generated Odoo server configuration
 - `odoo/.venv/` — Python virtual environment
 
@@ -29,6 +29,7 @@ Commands can be run from the workspace root or any nested directory inside the w
 | Command | Description |
 |---|---|
 | `odoo info` | Show current workspace configuration |
+| `odoo doctor` | Check the workspace for common setup problems |
 | `odoo start` | Start the Odoo server |
 | `odoo update [modules]` | Update modules (default: all) |
 | `odoo db-reset` | Drop and recreate the database |

@@ -60,7 +60,7 @@ def rpc(
     directory = find_workspace_root()
     if directory is None:
         console.print(
-            "[red]No config.toml found in this directory or its parents. "
+            "[red]No odoo-workspace.toml found in this directory or its parents. "
             "Run 'odoo init' first.[/red]",
             file=sys.stderr,
         )
