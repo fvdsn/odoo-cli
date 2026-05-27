@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from odoo_cli.config import load_config, save_config
+from odoo_cli.config import load_config, normalize_config, save_config
 from odoo_cli.odoo import configured_addons_paths
 from odoo_cli.postgres import terminate_connections
 from odoo_cli.workspace import find_workspace_root
@@ -31,6 +31,34 @@ class ConfigTests(unittest.TestCase):
             save_config(directory, config)
 
             self.assertEqual(load_config(directory), config)
+
+    def test_normalizes_missing_workspace_defaults(self) -> None:
+        config = normalize_config(minimal_workspace_config())
+
+        self.assertEqual(config["version"], "master")
+        self.assertEqual(config["postgres"]["host"], False)
+        self.assertEqual(config["postgres"]["db_name"], "odoo-dev")
+        self.assertEqual(config["odoo"]["http_port"], 8069)
+        self.assertEqual(config["remotes"]["dev_url"], "git@github.com:odoo-dev/{repo}.git")
+
+    def test_normalization_preserves_unknown_keys(self) -> None:
+        config = normalize_config({"repositories": {}, "postgres": {}, "odoo": {}, "custom": 1})
+
+        self.assertEqual(config["custom"], 1)
+
+    def test_load_config_normalizes_workspace_configs_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            save_config(directory, minimal_workspace_config())
+
+            self.assertEqual(load_config(directory)["odoo"]["http_port"], 8069)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            directory = Path(tmp)
+            raw_config = {"tool": {"other": True}}
+            save_config(directory, raw_config)
+
+            self.assertEqual(load_config(directory), raw_config)
 
 
 class WorkspaceDiscoveryTests(unittest.TestCase):

@@ -4,15 +4,8 @@ from pathlib import Path
 
 import typer
 
-from odoo_cli.config import config_path, load_config
+from odoo_cli.config import config_path, is_workspace_config, load_config
 from odoo_cli.console import console
-
-WORKSPACE_CONFIG_KEYS = {"repositories", "postgres", "odoo"}
-
-
-def is_workspace_config(config: dict) -> bool:
-    """Return whether a parsed config looks like an odoo-cli workspace config."""
-    return WORKSPACE_CONFIG_KEYS.issubset(config)
 
 
 def find_workspace_root(start: Path | None = None) -> Path | None:
@@ -24,7 +17,7 @@ def find_workspace_root(start: Path | None = None) -> Path | None:
     for directory in (current, *current.parents):
         if not config_path(directory).exists():
             continue
-        config = load_config(directory)
+        config = load_config(directory, normalize=False)
         if config and is_workspace_config(config):
             return directory
 
