@@ -1,7 +1,7 @@
-import tomllib
 from pathlib import Path
 
 import tomli_w
+import tomllib
 
 CONFIG_FILENAME = "config.toml"
 

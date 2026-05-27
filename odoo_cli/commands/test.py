@@ -1,6 +1,5 @@
 import re
 import subprocess
-from typing import Optional
 
 import typer
 
@@ -10,20 +9,25 @@ from odoo_cli.postgres import pg_env, terminate_connections
 
 
 def test(
-    modules: Optional[str] = typer.Argument(
+    modules: str | None = typer.Argument(
         None,
         help="Comma-separated modules to test (default: all installed).",
     ),
-    tags: Optional[str] = typer.Option(
-        None, "--tags", "-t",
+    tags: str | None = typer.Option(
+        None,
+        "--tags",
+        "-t",
         help="Test tags to filter (e.g. 'test_sale', '-at_install,post_install').",
     ),
     keep_db: bool = typer.Option(
-        False, "--keep-db",
+        False,
+        "--keep-db",
         help="Keep the test database after running tests.",
     ),
     verbose: bool = typer.Option(
-        False, "--verbose", "-v",
+        False,
+        "--verbose",
+        "-v",
         help="Show full Odoo test output.",
     ),
 ) -> None:
@@ -40,12 +44,16 @@ def test(
     terminate_connections(config, db_name)
     subprocess.run(
         ["dropdb", "--if-exists", db_name],
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
     console.print(f"  Creating test database [bold]{db_name}[/bold]...", end=" ")
     result = subprocess.run(
         ["createdb", db_name],
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
     if result.returncode != 0:
         console.print("[red]failed[/red]")
@@ -63,8 +71,10 @@ def test(
 
     cmd = workspace.command(
         f"--addons-path={','.join(addons_paths)}",
-        "-d", db_name,
-        "-i", target_modules,
+        "-d",
+        db_name,
+        "-i",
+        target_modules,
         "--test-enable",
         "--stop-after-init",
         "--no-http",
@@ -84,7 +94,9 @@ def test(
         exit_code = result.returncode
     else:
         proc = subprocess.Popen(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
         )
 
@@ -166,14 +178,16 @@ def test(
         terminate_connections(config, db_name)
         subprocess.run(
             ["dropdb", "--if-exists", db_name],
-            capture_output=True, text=True, env=env,
+            capture_output=True,
+            text=True,
+            env=env,
         )
         console.print(f"  Dropped test database [dim]{db_name}[/dim]")
     else:
         console.print(f"  Test database [dim]{db_name}[/dim] kept for inspection.")
 
     if exit_code != 0:
-        console.print(f"\n[red]Tests failed.[/red]")
+        console.print("\n[red]Tests failed.[/red]")
         raise typer.Exit(code=exit_code)
 
-    console.print(f"\n[green]Tests passed.[/green]")
+    console.print("\n[green]Tests passed.[/green]")

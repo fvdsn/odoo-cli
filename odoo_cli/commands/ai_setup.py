@@ -10,7 +10,9 @@ def ai_setup() -> None:
     directory, config = load_workspace_config()
 
     if not configured_harnesses(config):
-        console.print("[yellow]No AI harnesses configured. Run 'odoo-cli init' to set them up.[/yellow]")
+        console.print(
+            "[yellow]No AI harnesses configured. Run 'odoo-cli init' to set them up.[/yellow]"
+        )
         raise typer.Exit(code=1)
 
     console.print("\n[bold]Setting up AI context files...[/bold]")

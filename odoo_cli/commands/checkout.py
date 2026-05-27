@@ -1,29 +1,29 @@
-from typing import Optional
-
 import questionary
 import typer
 
 from odoo_cli.config import save_config
 from odoo_cli.console import console
 from odoo_cli.repos import (
+    REPOS,
     branch_exists,
     check_repos_before_switch,
     checkout_version,
     get_available_versions,
-    REPOS,
 )
 from odoo_cli.workspace import load_workspace_config
 
 
 def checkout(
-    version: Optional[str] = typer.Argument(
+    version: str | None = typer.Argument(
         None,
         help="Version to switch to (e.g. 19.0, saas-19.3, master).",
     ),
     yes: bool = typer.Option(
-        False, "--yes", "-y",
+        False,
+        "--yes",
+        "-y",
         help="Skip confirmation for feature branch warnings. "
-             "Still fails on uncommitted changes or unpushed commits.",
+        "Still fails on uncommitted changes or unpushed commits.",
     ),
 ) -> None:
     """Checkout a version branch across all repositories."""

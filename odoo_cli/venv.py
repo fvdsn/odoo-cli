@@ -48,10 +48,14 @@ def setup_venv(directory: Path) -> bool:
         console.print("  Installing requirements...")
         result = subprocess.run(
             [
-                "uv", "pip", "install",
-                "--python", venv_python,
+                "uv",
+                "pip",
+                "install",
+                "--python",
+                venv_python,
                 "--no-build-isolation",
-                "-r", str(requirements),
+                "-r",
+                str(requirements),
             ],
             capture_output=True,
             text=True,

@@ -15,7 +15,10 @@ def db_reset() -> None:
 
     db_name = workspace.database_name
 
-    console.print(f"\nThis will [bold red]drop[/bold red] the database [bold]{db_name}[/bold] and all its data.")
+    console.print(
+        f"\nThis will [bold red]drop[/bold red] the database "
+        f"[bold]{db_name}[/bold] and all its data."
+    )
     if not questionary.confirm("Are you sure?", default=False).unsafe_ask():
         raise typer.Exit(code=0)
 
@@ -26,7 +29,9 @@ def db_reset() -> None:
     console.print(f"  Dropping [bold]{db_name}[/bold]...", end=" ")
     result = subprocess.run(
         ["dropdb", "--if-exists", db_name],
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
     if result.returncode != 0:
         console.print("[red]failed[/red]")
@@ -37,7 +42,9 @@ def db_reset() -> None:
     console.print(f"  Creating [bold]{db_name}[/bold]...", end=" ")
     result = subprocess.run(
         ["createdb", db_name],
-        capture_output=True, text=True, env=env,
+        capture_output=True,
+        text=True,
+        env=env,
     )
     if result.returncode != 0:
         console.print("[red]failed[/red]")
@@ -57,7 +64,8 @@ def db_reset() -> None:
 
         cmd = workspace.command(
             f"--config={workspace.odoo_conf}",
-            "-i", modules_str,
+            "-i",
+            modules_str,
             "--stop-after-init",
         )
         if not odoo_config.get("demo_data", True):
@@ -66,7 +74,7 @@ def db_reset() -> None:
         console.print(f"  [dim]$ {' '.join(cmd)}[/dim]\n")
         result = subprocess.run(cmd)
         if result.returncode != 0:
-            console.print(f"\n[red]Module installation failed.[/red]")
+            console.print("\n[red]Module installation failed.[/red]")
             raise typer.Exit(code=1)
 
     console.print(f"\n[green]Database '{db_name}' has been reset and initialized.[/green]")

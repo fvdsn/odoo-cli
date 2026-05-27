@@ -56,9 +56,7 @@ def setup_claude(directory: Path, config: dict) -> list[str]:
     for skill in load_skills():
         # Claude commands use description in frontmatter, body as content
         skill_path = commands_dir / f"{skill['name']}.md"
-        skill_path.write_text(
-            f"---\ndescription: {skill['description']}\n---\n\n{skill['body']}"
-        )
+        skill_path.write_text(f"---\ndescription: {skill['description']}\n---\n\n{skill['body']}")
         files.append(f".claude/commands/{skill['name']}.md")
 
     return files
@@ -81,7 +79,7 @@ def setup_copilot(directory: Path, config: dict) -> list[str]:
     for skill in load_skills():
         skill_path = instructions_dir / f"{skill['name']}.instructions.md"
         skill_path.write_text(
-            f"---\ndescription: {skill['description']}\nglobs: \"**\"\n---\n\n{skill['body']}"
+            f'---\ndescription: {skill["description"]}\nglobs: "**"\n---\n\n{skill["body"]}'
         )
         files.append(f".github/instructions/{skill['name']}.instructions.md")
 

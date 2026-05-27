@@ -34,10 +34,7 @@ def get_available_versions() -> list[str]:
                 branches.add(ref)
 
         def numeric_tuple(s):
-            return tuple(
-                int(part) if part.isdigit() else part
-                for part in re.split(r"(\d+)", s)
-            )
+            return tuple(int(part) if part.isdigit() else part for part in re.split(r"(\d+)", s))
 
         def negate_tuple(t):
             return tuple(-x if isinstance(x, int) else x for x in t)
@@ -127,19 +124,25 @@ def get_repo_status(dest: Path) -> dict:
     """Check a repo's working tree status: current branch, dirty state, ahead commits."""
     branch = subprocess.run(
         ["git", "-C", str(dest), "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     ).stdout.strip()
 
-    dirty = subprocess.run(
-        ["git", "-C", str(dest), "status", "--porcelain"],
-        capture_output=True, text=True,
-    ).stdout.strip() != ""
+    dirty = (
+        subprocess.run(
+            ["git", "-C", str(dest), "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        != ""
+    )
 
     # Check if branch has unpushed commits
     ahead = 0
     result = subprocess.run(
         ["git", "-C", str(dest), "rev-list", "--count", f"origin/{branch}..HEAD"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode == 0:
         ahead = int(result.stdout.strip())
@@ -148,7 +151,8 @@ def get_repo_status(dest: Path) -> dict:
 
 
 def check_repos_before_switch(
-    directory: Path, config: dict,
+    directory: Path,
+    config: dict,
 ) -> tuple[list[tuple[str, str]], list[tuple[str, str]], list[tuple[str, int]]]:
     """Check all repos for blockers and warnings before version switch.
 

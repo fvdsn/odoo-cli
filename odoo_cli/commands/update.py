@@ -1,5 +1,4 @@
 import subprocess
-from typing import Optional
 
 import typer
 
@@ -8,7 +7,7 @@ from odoo_cli.odoo import current_workspace
 
 
 def update(
-    modules: Optional[str] = typer.Argument(
+    modules: str | None = typer.Argument(
         None,
         help="Comma-separated modules to update (default: all).",
     ),
@@ -20,7 +19,8 @@ def update(
 
     cmd = workspace.command(
         f"--config={workspace.odoo_conf}",
-        "-u", target,
+        "-u",
+        target,
         "--stop-after-init",
     )
 
@@ -32,4 +32,4 @@ def update(
         console.print(f"\n[red]Update failed (exit code {result.returncode}).[/red]")
         raise typer.Exit(code=1)
 
-    console.print(f"\n[green]Update complete.[/green]")
+    console.print("\n[green]Update complete.[/green]")

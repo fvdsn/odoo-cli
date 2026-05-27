@@ -11,7 +11,7 @@ def config() -> None:
 
     new_config = run_wizard(existing)
     save_config(directory, new_config)
-    console.print(f"\nSaved configuration to [bold]config.toml[/bold]")
+    console.print("\nSaved configuration to [bold]config.toml[/bold]")
 
     # Regenerate odoo.conf
     generate_odoo_conf(directory, new_config)

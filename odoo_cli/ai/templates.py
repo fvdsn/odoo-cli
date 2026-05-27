@@ -35,10 +35,12 @@ def load_skills() -> list[dict]:
                 elif line.startswith("description:"):
                     description = line.split(":", 1)[1].strip()
 
-        skills.append({
-            "name": name,
-            "description": description,
-            "content": content,
-            "body": body,
-        })
+        skills.append(
+            {
+                "name": name,
+                "description": description,
+                "content": content,
+                "body": body,
+            }
+        )
     return skills

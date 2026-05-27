@@ -71,7 +71,12 @@ def current_workspace(*, require_odoo: bool = False, require_venv: bool = False)
     return workspace
 
 
-def configured_addons_paths(directory: Path, config: dict, *, only_existing: bool = True) -> list[Path]:
+def configured_addons_paths(
+    directory: Path,
+    config: dict,
+    *,
+    only_existing: bool = True,
+) -> list[Path]:
     """Return addons paths for the configured repository layout."""
     from odoo_cli.repos import get_repos
 

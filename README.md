@@ -52,6 +52,8 @@ Run `odoo-cli <command> --help` for detailed usage.
 ## Development
 
 ```bash
+uv run ruff check .
+uv run ruff format --check .
 uv run python -m unittest discover -s tests
 uv run python -m compileall -q odoo_cli tests
 ```

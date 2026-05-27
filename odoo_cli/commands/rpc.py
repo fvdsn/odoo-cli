@@ -1,7 +1,7 @@
 import json
 import sys
-import urllib.request
 import urllib.error
+import urllib.request
 
 import typer
 
@@ -11,12 +11,14 @@ from odoo_cli.workspace import find_workspace_root, load_required_config
 
 def _jsonrpc(url: str, method: str, params: dict) -> dict:
     """Make a JSON-RPC call."""
-    payload = json.dumps({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": method,
-        "params": params,
-    }).encode()
+    payload = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": method,
+            "params": params,
+        }
+    ).encode()
 
     req = urllib.request.Request(
         url,
@@ -29,11 +31,15 @@ def _jsonrpc(url: str, method: str, params: dict) -> dict:
 
 def _authenticate(base_url: str, db: str, login: str, password: str) -> int:
     """Authenticate and return the user ID."""
-    result = _jsonrpc(f"{base_url}/jsonrpc", "call", {
-        "service": "common",
-        "method": "authenticate",
-        "args": [db, login, password, {}],
-    })
+    result = _jsonrpc(
+        f"{base_url}/jsonrpc",
+        "call",
+        {
+            "service": "common",
+            "method": "authenticate",
+            "args": [db, login, password, {}],
+        },
+    )
     uid = result.get("result")
     if not uid:
         error = result.get("error", {}).get("data", {}).get("message", "Authentication failed")
@@ -44,14 +50,18 @@ def _authenticate(base_url: str, db: str, login: str, password: str) -> int:
 def rpc(
     call: str = typer.Argument(
         ...,
-        help='JSON-RPC call: {"model": "res.partner", "method": "search_read", "args": [[]], "kwargs": {"fields": ["name"], "limit": 5}}',
+        help=(
+            'JSON-RPC call: {"model": "res.partner", "method": "search_read", '
+            '"args": [[]], "kwargs": {"fields": ["name"], "limit": 5}}'
+        ),
     ),
 ) -> None:
     """Execute an RPC call on the Odoo server and output JSON."""
     directory = find_workspace_root()
     if directory is None:
         console.print(
-            "[red]No config.toml found in this directory or its parents. Run 'odoo-cli init' first.[/red]",
+            "[red]No config.toml found in this directory or its parents. "
+            "Run 'odoo-cli init' first.[/red]",
             file=sys.stderr,
         )
         raise typer.Exit(code=1)
@@ -69,7 +79,7 @@ def rpc(
         params = json.loads(call)
     except json.JSONDecodeError as e:
         print(f'{{"error": "Invalid JSON: {e}"}}', file=sys.stderr)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
 
     model = params.get("model")
     method = params.get("method")
@@ -83,11 +93,15 @@ def rpc(
     try:
         uid = _authenticate(base_url, db, login, password)
 
-        result = _jsonrpc(f"{base_url}/jsonrpc", "call", {
-            "service": "object",
-            "method": "execute_kw",
-            "args": [db, uid, password, model, method, args, kwargs],
-        })
+        result = _jsonrpc(
+            f"{base_url}/jsonrpc",
+            "call",
+            {
+                "service": "object",
+                "method": "execute_kw",
+                "args": [db, uid, password, model, method, args, kwargs],
+            },
+        )
 
         if "error" in result:
             error_msg = result["error"].get("data", {}).get("message", str(result["error"]))
@@ -96,9 +110,9 @@ def rpc(
 
         print(json.dumps(result.get("result"), indent=2))
 
-    except urllib.error.URLError:
+    except urllib.error.URLError as e:
         print('{"error": "Cannot connect to Odoo server. Is it running?"}', file=sys.stderr)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e
     except RuntimeError as e:
         print(json.dumps({"error": str(e)}), file=sys.stderr)
-        raise typer.Exit(code=1)
+        raise typer.Exit(code=1) from e

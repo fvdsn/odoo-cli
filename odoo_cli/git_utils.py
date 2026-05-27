@@ -15,7 +15,14 @@ def configure_git_user(repo_dir: Path, name: str, email: str) -> None:
         )
 
 
-def clone_repo(name: str, url: str, dest: Path, branch: str, user_name: str, user_email: str) -> bool:
+def clone_repo(
+    name: str,
+    url: str,
+    dest: Path,
+    branch: str,
+    user_name: str,
+    user_email: str,
+) -> bool:
     if dest.exists():
         console.print(f"  [yellow]{name}/[/yellow] already exists, skipping.")
         configure_git_user(dest, user_name, user_email)
@@ -35,11 +42,16 @@ def clone_repo(name: str, url: str, dest: Path, branch: str, user_name: str, use
     try:
         subprocess.run(
             [
-                "git", "clone",
-                "--branch", actual_branch,
-                "-c", f"user.name={user_name}",
-                "-c", f"user.email={user_email}",
-                url, str(dest),
+                "git",
+                "clone",
+                "--branch",
+                actual_branch,
+                "-c",
+                f"user.name={user_name}",
+                "-c",
+                f"user.email={user_email}",
+                url,
+                str(dest),
             ],
             check=True,
         )

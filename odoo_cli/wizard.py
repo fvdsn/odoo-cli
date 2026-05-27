@@ -9,26 +9,79 @@ from odoo_cli.postgres import check_connection
 from odoo_cli.repos import DEV_REMOTE_URL, get_available_versions
 
 COMMUNITY_APPS = [
-    "account", "calendar", "contacts", "crm", "data_recycle", "fleet",
-    "hr", "hr_attendance", "hr_expense", "hr_holidays", "hr_recruitment",
-    "hr_skills", "im_livechat", "lunch", "mail", "maintenance",
-    "marketing_card", "mass_mailing", "mass_mailing_sms", "mrp",
-    "point_of_sale", "pos_restaurant", "project", "project_todo",
-    "purchase", "repair", "stock", "survey", "website", "website_event",
-    "website_hr_recruitment", "website_slides",
+    "account",
+    "calendar",
+    "contacts",
+    "crm",
+    "data_recycle",
+    "fleet",
+    "hr",
+    "hr_attendance",
+    "hr_expense",
+    "hr_holidays",
+    "hr_recruitment",
+    "hr_skills",
+    "im_livechat",
+    "lunch",
+    "mail",
+    "maintenance",
+    "marketing_card",
+    "mass_mailing",
+    "mass_mailing_sms",
+    "mrp",
+    "point_of_sale",
+    "pos_restaurant",
+    "project",
+    "project_todo",
+    "purchase",
+    "repair",
+    "stock",
+    "survey",
+    "website",
+    "website_event",
+    "website_hr_recruitment",
+    "website_slides",
 ]
 
 ENTERPRISE_APPS = [
-    "accountant", "ai_app", "appointment", "approvals", "databases",
-    "delivery_bpost", "delivery_dhl_rest", "delivery_easypost",
-    "delivery_envia", "delivery_fedex_rest", "delivery_sendcloud",
-    "delivery_shiprocket", "delivery_starshipit", "delivery_ups_rest",
-    "delivery_usps_rest", "documents", "equity", "esg", "frontdesk",
-    "helpdesk", "hr_appraisal", "hr_payroll", "hr_referral", "iot",
-    "knowledge", "marketing_automation", "mrp_plm", "planning",
-    "planning_field_service", "quality_control", "room",
-    "sale_subscription", "sign", "social", "stock_barcode",
-    "timesheet_grid", "web_studio", "whatsapp",
+    "accountant",
+    "ai_app",
+    "appointment",
+    "approvals",
+    "databases",
+    "delivery_bpost",
+    "delivery_dhl_rest",
+    "delivery_easypost",
+    "delivery_envia",
+    "delivery_fedex_rest",
+    "delivery_sendcloud",
+    "delivery_shiprocket",
+    "delivery_starshipit",
+    "delivery_ups_rest",
+    "delivery_usps_rest",
+    "documents",
+    "equity",
+    "esg",
+    "frontdesk",
+    "helpdesk",
+    "hr_appraisal",
+    "hr_payroll",
+    "hr_referral",
+    "iot",
+    "knowledge",
+    "marketing_automation",
+    "mrp_plm",
+    "planning",
+    "planning_field_service",
+    "quality_control",
+    "room",
+    "sale_subscription",
+    "sign",
+    "social",
+    "stock_barcode",
+    "timesheet_grid",
+    "web_studio",
+    "whatsapp",
 ]
 
 
@@ -115,9 +168,13 @@ def run_wizard(existing: dict | None = None) -> dict:
             if questionary.confirm(f"  Keep {url}?", default=True).unsafe_ask():
                 extra_addons.append(url)
         while True:
-            url = questionary.text(
-                "Addons repo git URL (leave empty to stop):",
-            ).unsafe_ask().strip()
+            url = (
+                questionary.text(
+                    "Addons repo git URL (leave empty to stop):",
+                )
+                .unsafe_ask()
+                .strip()
+            )
             if not url:
                 break
             extra_addons.append(url)
@@ -141,11 +198,13 @@ def run_wizard(existing: dict | None = None) -> dict:
                 "PostgreSQL host:",
                 default=str(e_pg.get("host", "localhost")) if e_pg.get("host") else "localhost",
             ).unsafe_ask(),
-            "port": int(questionary.text(
-                "PostgreSQL port:",
-                default=str(e_pg.get("port", 5432)) if e_pg.get("port") else "5432",
-                validate=lambda v: v.isdigit() or "Must be a number",
-            ).unsafe_ask()),
+            "port": int(
+                questionary.text(
+                    "PostgreSQL port:",
+                    default=str(e_pg.get("port", 5432)) if e_pg.get("port") else "5432",
+                    validate=lambda v: v.isdigit() or "Must be a number",
+                ).unsafe_ask()
+            ),
             "user": questionary.text(
                 "PostgreSQL user:",
                 default=str(e_pg.get("user", "odoo")) if e_pg.get("user") else "odoo",
@@ -181,17 +240,21 @@ def run_wizard(existing: dict | None = None) -> dict:
         default=e_odoo.get("admin_password", "admin"),
     ).unsafe_ask()
 
-    http_port = int(questionary.text(
-        "HTTP port:",
-        default=str(e_odoo.get("http_port", 8069)),
-        validate=lambda v: v.isdigit() or "Must be a number",
-    ).unsafe_ask())
+    http_port = int(
+        questionary.text(
+            "HTTP port:",
+            default=str(e_odoo.get("http_port", 8069)),
+            validate=lambda v: v.isdigit() or "Must be a number",
+        ).unsafe_ask()
+    )
 
-    websocket_port = int(questionary.text(
-        "WebSocket port:",
-        default=str(e_odoo.get("websocket_port", 8072)),
-        validate=lambda v: v.isdigit() or "Must be a number",
-    ).unsafe_ask())
+    websocket_port = int(
+        questionary.text(
+            "WebSocket port:",
+            default=str(e_odoo.get("websocket_port", 8072)),
+            validate=lambda v: v.isdigit() or "Must be a number",
+        ).unsafe_ask()
+    )
 
     data_dir = questionary.text(
         "Data directory:",
@@ -219,10 +282,7 @@ def run_wizard(existing: dict | None = None) -> dict:
     prev_modules = set(e_odoo.get("install_modules", []))
     install_modules = questionary.checkbox(
         "Modules to install (space to select, enter to confirm):",
-        choices=[
-            questionary.Choice(app, checked=app in prev_modules)
-            for app in apps
-        ],
+        choices=[questionary.Choice(app, checked=app in prev_modules) for app in apps],
     ).unsafe_ask()
 
     if odoo_employee:

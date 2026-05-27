@@ -29,7 +29,8 @@ def check_connection(postgres: dict) -> tuple[bool, str]:
     )
     if result.returncode == 0:
         return True, ""
-    return False, result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "unknown error"
+    error = result.stderr.strip()
+    return False, error.splitlines()[-1] if error else "unknown error"
 
 
 def terminate_connections(config: dict, db_name: str) -> None:
@@ -37,8 +38,11 @@ def terminate_connections(config: dict, db_name: str) -> None:
     env = pg_env(config)
     subprocess.run(
         [
-            "psql", "-d", "postgres",
-            "-v", f"db_name={db_name}",
+            "psql",
+            "-d",
+            "postgres",
+            "-v",
+            f"db_name={db_name}",
             "-c",
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
             "WHERE datname = :'db_name' AND pid <> pg_backend_pid();",

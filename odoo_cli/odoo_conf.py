@@ -11,8 +11,7 @@ def generate_odoo_conf(directory: Path, config: dict) -> None:
     pg = config["postgres"]
 
     addons_paths = [
-        str(path)
-        for path in configured_addons_paths(directory, config, only_existing=False)
+        str(path) for path in configured_addons_paths(directory, config, only_existing=False)
     ]
 
     lines = [
@@ -29,13 +28,15 @@ def generate_odoo_conf(directory: Path, config: dict) -> None:
         if val is not False:
             lines.append(f"{key} = {val}")
 
-    lines.extend([
-        f"db_name = {pg['db_name']}",
-        f"http_port = {config['odoo']['http_port']}",
-        f"longpolling_port = {config['odoo']['websocket_port']}",
-        f"data_dir = {config['odoo']['data_dir']}",
-        "",
-    ])
+    lines.extend(
+        [
+            f"db_name = {pg['db_name']}",
+            f"http_port = {config['odoo']['http_port']}",
+            f"longpolling_port = {config['odoo']['websocket_port']}",
+            f"data_dir = {config['odoo']['data_dir']}",
+            "",
+        ]
+    )
 
     conf_path.write_text("\n".join(lines))
     console.print(f"\n[bold]Generated[/bold] {conf_path}")

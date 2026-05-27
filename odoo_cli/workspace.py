@@ -7,7 +7,6 @@ import typer
 from odoo_cli.config import config_path, load_config
 from odoo_cli.console import console
 
-
 WORKSPACE_CONFIG_KEYS = {"repositories", "postgres", "odoo"}
 
 
@@ -36,7 +35,10 @@ def require_workspace_root(start: Path | None = None) -> Path:
     """Find the workspace root or exit with a consistent CLI error."""
     directory = find_workspace_root(start)
     if directory is None:
-        console.print("[red]No config.toml found in this directory or its parents. Run 'odoo-cli init' first.[/red]")
+        console.print(
+            "[red]No config.toml found in this directory or its parents. "
+            "Run 'odoo-cli init' first.[/red]"
+        )
         raise typer.Exit(code=1)
     return directory
 
