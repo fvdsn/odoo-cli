@@ -42,6 +42,7 @@ Configuration is saved to `config.toml` and reused on subsequent runs.
 | `odoo-cli psql` | Open an interactive PostgreSQL shell |
 | `odoo-cli shell` | Python REPL with the Odoo environment loaded |
 | `odoo-cli run "code"` | Execute Python code in the Odoo environment |
+| `odoo-cli rpc '{...}'` | Execute a JSON-RPC call on the Odoo server |
 | `odoo-cli ai-setup` | Regenerate AI context files and skills |
 
 Run `odoo-cli <command> --help` for detailed usage.

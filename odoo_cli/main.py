@@ -1,6 +1,6 @@
 import typer
 
-from odoo_cli.commands import ai_setup, checkout, config, db_reset, info, init, pull, setup_venv, shell, sql, start, test, update
+from odoo_cli.commands import ai_setup, checkout, config, db_reset, info, init, pull, rpc, setup_venv, shell, sql, start, test, update
 
 app = typer.Typer(
     name="odoo-cli",
@@ -19,6 +19,7 @@ app.command()(update.update)
 app.command("db-reset")(db_reset.db_reset)
 app.command()(sql.sql)
 app.command()(sql.psql)
+app.command()(rpc.rpc)
 app.command()(shell.shell)
 app.command()(shell.run)
 app.command()(test.test)

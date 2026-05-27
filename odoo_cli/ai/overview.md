@@ -37,6 +37,7 @@ All commands should be run from the workspace root.
 | `odoo-cli psql` | Open an interactive PostgreSQL shell |
 | `odoo-cli shell` | Python REPL with Odoo environment |
 | `odoo-cli run "code"` | Execute Python in Odoo environment |
+| `odoo-cli rpc '{"model":...}'` | Execute a JSON-RPC call on the server |
 | `odoo-cli checkout [version]` | Switch all repos to a version |
 | `odoo-cli pull` | Pull latest changes across all repos |
 | `odoo-cli venv` | Recreate the Python virtual environment |

@@ -27,6 +27,11 @@ All commands run from the workspace root directory.
 - `odoo-cli shell` — Interactive Python REPL with Odoo environment (`env`, models, cursor).
 - `odoo-cli run "code"` — Execute a Python one-liner in Odoo environment. Non-interactive, suitable for automation.
 
+### RPC
+
+- `odoo-cli rpc '{"model": "...", "method": "...", "args": [...], "kwargs": {...}}'` — Execute a JSON-RPC call on the running Odoo server. Uses configured admin credentials. Outputs JSON to stdout.
+  - Example: `odoo-cli rpc '{"model": "res.partner", "method": "search_read", "args": [[]], "kwargs": {"fields": ["name"], "limit": 5}}'`
+
 ### Testing
 
 - `odoo-cli test [modules]` — Run tests on a dedicated test database. Defaults to configured modules.
