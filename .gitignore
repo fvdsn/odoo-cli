@@ -2,8 +2,10 @@
 __pycache__/
 *.py[cod]
 *.egg-info/
+.ruff_cache/
 dist/
 build/
+.DS_Store
 
 # Virtual environment
 .venv/
