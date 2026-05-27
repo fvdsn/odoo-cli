@@ -1,17 +1,13 @@
-from pathlib import Path
-
 import typer
 
 from odoo_cli.ai.harnesses import HARNESSES, SETUP_FUNCTIONS
 from odoo_cli.console import console
-from odoo_cli.workspace import load_required_config
+from odoo_cli.workspace import load_workspace_config
 
 
 def ai_setup() -> None:
     """Generate AI context files and skills for configured harnesses."""
-    directory = Path.cwd()
-
-    config = load_required_config(directory)
+    directory, config = load_workspace_config()
 
     harnesses = config.get("ai", {}).get("harnesses", [])
     if not harnesses:

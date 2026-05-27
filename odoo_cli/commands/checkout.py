@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Optional
 
 import questionary
@@ -13,7 +12,7 @@ from odoo_cli.repos import (
     get_available_versions,
     REPOS,
 )
-from odoo_cli.workspace import load_required_config
+from odoo_cli.workspace import load_workspace_config
 
 
 def checkout(
@@ -28,9 +27,7 @@ def checkout(
     ),
 ) -> None:
     """Checkout a version branch across all repositories."""
-    directory = Path.cwd()
-
-    config = load_required_config(directory)
+    directory, config = load_workspace_config()
 
     if version is None:
         if yes:

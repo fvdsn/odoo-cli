@@ -25,6 +25,8 @@ Interactive wizard that sets up:
 - AI context files for coding assistants (Claude, Copilot, Codex, OpenCode, Pi)
 
 Configuration is saved to `config.toml` and reused on subsequent runs.
+After initialization, commands can be run from the workspace root or any nested
+directory inside the workspace.
 
 ## Commands
 

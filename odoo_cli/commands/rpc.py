@@ -2,12 +2,11 @@ import json
 import sys
 import urllib.request
 import urllib.error
-from pathlib import Path
 
 import typer
 
-from odoo_cli.config import load_config
 from odoo_cli.console import console
+from odoo_cli.workspace import find_workspace_root, load_required_config
 
 
 def _jsonrpc(url: str, method: str, params: dict) -> dict:
@@ -49,12 +48,14 @@ def rpc(
     ),
 ) -> None:
     """Execute an RPC call on the Odoo server and output JSON."""
-    directory = Path.cwd()
-
-    config = load_config(directory)
-    if not config:
-        console.print("[red]No config.toml found. Run 'odoo-cli init' first.[/red]", file=sys.stderr)
+    directory = find_workspace_root()
+    if directory is None:
+        console.print(
+            "[red]No config.toml found in this directory or its parents. Run 'odoo-cli init' first.[/red]",
+            file=sys.stderr,
+        )
         raise typer.Exit(code=1)
+    config = load_required_config(directory)
 
     odoo_config = config.get("odoo", {})
     pg = config["postgres"]

@@ -6,6 +6,20 @@ from unittest.mock import patch
 from odoo_cli.config import load_config, save_config
 from odoo_cli.odoo import configured_addons_paths
 from odoo_cli.postgres import terminate_connections
+from odoo_cli.workspace import find_workspace_root
+
+
+def minimal_workspace_config() -> dict:
+    return {
+        "repositories": {
+            "enterprise": False,
+            "documentation": False,
+            "themes": False,
+            "extra_addons": [],
+        },
+        "postgres": {"db_name": "odoo-dev"},
+        "odoo": {},
+    }
 
 
 class ConfigTests(unittest.TestCase):
@@ -17,6 +31,31 @@ class ConfigTests(unittest.TestCase):
             save_config(directory, config)
 
             self.assertEqual(load_config(directory), config)
+
+
+class WorkspaceDiscoveryTests(unittest.TestCase):
+    def test_finds_workspace_root_from_nested_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = root / "odoo" / "addons" / "sale"
+            nested.mkdir(parents=True)
+            save_config(root, minimal_workspace_config())
+
+            self.assertEqual(find_workspace_root(nested), root.resolve())
+
+    def test_ignores_non_workspace_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            nested = root / "odoo"
+            nested.mkdir()
+            save_config(root, minimal_workspace_config())
+            save_config(nested, {"tool": {"other": True}})
+
+            self.assertEqual(find_workspace_root(nested), root.resolve())
+
+    def test_returns_none_outside_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(find_workspace_root(Path(tmp)))
 
 
 class OdooPathTests(unittest.TestCase):

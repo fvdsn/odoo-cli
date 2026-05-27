@@ -1,16 +1,13 @@
 import subprocess
-from pathlib import Path
 
 from odoo_cli.console import console
 from odoo_cli.repos import get_repos
-from odoo_cli.workspace import load_required_config
+from odoo_cli.workspace import load_workspace_config
 
 
 def pull() -> None:
     """Pull latest changes from origin across all repositories."""
-    directory = Path.cwd()
-
-    config = load_required_config(directory)
+    directory, config = load_workspace_config()
 
     repos = get_repos(directory, config)
 

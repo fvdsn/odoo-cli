@@ -6,7 +6,7 @@ from pathlib import Path
 import typer
 
 from odoo_cli.console import console
-from odoo_cli.workspace import load_required_config
+from odoo_cli.workspace import load_workspace_config
 
 
 @dataclass(frozen=True)
@@ -62,8 +62,8 @@ class OdooWorkspace:
 
 def current_workspace(*, require_odoo: bool = False, require_venv: bool = False) -> OdooWorkspace:
     """Return the current Odoo workspace, optionally validating runtime paths."""
-    directory = Path.cwd()
-    workspace = OdooWorkspace(directory, load_required_config(directory))
+    directory, config = load_workspace_config()
+    workspace = OdooWorkspace(directory, config)
     if require_odoo:
         workspace.require_odoo_checkout()
     if require_venv:

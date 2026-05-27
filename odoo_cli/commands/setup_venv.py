@@ -1,14 +1,13 @@
-from pathlib import Path
-
 import typer
 
 from odoo_cli.console import console
 from odoo_cli.venv import setup_venv
+from odoo_cli.workspace import require_workspace_root
 
 
 def venv() -> None:
     """Set up (or recreate) the Python virtual environment for Odoo."""
-    directory = Path.cwd()
+    directory = require_workspace_root()
 
     odoo_dir = directory / "odoo"
     if not odoo_dir.exists():

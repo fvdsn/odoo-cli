@@ -1,16 +1,12 @@
-from pathlib import Path
-
 from odoo_cli.commands.init import generate_odoo_conf, run_wizard
 from odoo_cli.config import save_config
 from odoo_cli.console import console
-from odoo_cli.workspace import load_required_config
+from odoo_cli.workspace import load_workspace_config
 
 
 def config() -> None:
     """Update the workspace configuration."""
-    directory = Path.cwd()
-
-    existing = load_required_config(directory)
+    directory, existing = load_workspace_config()
 
     new_config = run_wizard(existing)
     save_config(directory, new_config)
