@@ -32,7 +32,7 @@ def generate_odoo_conf(directory: Path, config: dict) -> None:
         [
             f"db_name = {pg['db_name']}",
             f"http_port = {config['odoo']['http_port']}",
-            f"longpolling_port = {config['odoo']['websocket_port']}",
+            f"gevent_port = {config['odoo']['websocket_port']}",
             f"data_dir = {config['odoo']['data_dir']}",
             "",
         ]

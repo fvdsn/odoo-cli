@@ -15,7 +15,7 @@ def shell(
 ) -> None:
     """Open a Python shell with the Odoo environment loaded."""
     workspace = current_workspace(require_odoo=True, require_venv=True)
-    cmd = workspace.command("shell", f"--config={workspace.odoo_conf}")
+    cmd = workspace.command("shell", f"--config={workspace.odoo_conf}", "--log-level=warn")
     input_text = None
     if command is not None:
         cmd.append("--no-http")
