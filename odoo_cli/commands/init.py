@@ -205,6 +205,12 @@ def run_wizard() -> dict:
             ).unsafe_ask()
             dev_remote_url = f"git@github.com:{github_user}/{{repo}}.git"
 
+    from odoo_cli.ai.harnesses import HARNESSES
+    ai_harnesses = questionary.checkbox(
+        "AI harnesses to set up (space to select):",
+        choices=[questionary.Choice(label, value=key) for key, label in HARNESSES.items()],
+    ).unsafe_ask()
+
     return {
         "version": version,
         "odoo_employee": odoo_employee,
@@ -232,6 +238,9 @@ def run_wizard() -> dict:
             "demo_data": demo_data,
             "dev_mode": dev_mode,
             "install_modules": install_modules,
+        },
+        "ai": {
+            "harnesses": ai_harnesses,
         },
     }
 
@@ -361,6 +370,16 @@ def apply_config(directory: Path, config: dict) -> None:
         raise typer.Exit(code=1)
 
     generate_odoo_conf(directory, config)
+
+    # AI context setup
+    if config.get("ai", {}).get("harnesses"):
+        from odoo_cli.ai.harnesses import SETUP_FUNCTIONS, HARNESSES
+        console.print("\n[bold]Setting up AI context files...[/bold]")
+        for harness in config["ai"]["harnesses"]:
+            setup_fn = SETUP_FUNCTIONS.get(harness)
+            if setup_fn:
+                files = setup_fn(directory, config)
+                console.print(f"  [green]{HARNESSES[harness]}[/green]: {', '.join(files)}")
 
     console.print("\n[green]Workspace initialized successfully.[/green]")
 

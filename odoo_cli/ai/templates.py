@@ -1,0 +1,121 @@
+"""Static content templates for AI context files."""
+
+
+def workspace_overview(config: dict) -> str:
+    """Generate the main workspace overview content."""
+    version = config.get("version", "master")
+    repos = []
+    repos.append("- `odoo/` — Odoo Community (main codebase)")
+    if config["repositories"]["enterprise"]:
+        repos.append("- `enterprise/` — Odoo Enterprise")
+    if config["repositories"]["documentation"]:
+        repos.append("- `documentation/` — Odoo Documentation")
+    if config["repositories"]["themes"]:
+        repos.append("- `themes/` — Odoo Themes (design-themes)")
+    for url in config["repositories"].get("extra_addons", []):
+        name = url.rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
+        repos.append(f"- `addons/{name}/` — Extra addon")
+    repos_str = "\n".join(repos)
+
+    pg = config["postgres"]
+    db_name = pg["db_name"]
+
+    odoo_config = config.get("odoo", {})
+    http_port = odoo_config.get("http_port", 8069)
+    modules = ", ".join(odoo_config.get("install_modules", []))
+
+    return f"""\
+# Odoo Development Workspace
+
+Version: {version}
+
+## Repositories
+
+{repos_str}
+
+## Database
+
+- Database: `{db_name}`
+- Server: http://localhost:{http_port}
+- Credentials: admin / admin
+
+## CLI Tool
+
+This workspace is managed by `odoo-cli`. All commands should be run from the workspace root.
+
+### Quick Reference
+
+| Command | Description |
+|---|---|
+| `odoo-cli start` | Start the Odoo server |
+| `odoo-cli update [modules]` | Update modules (default: all) |
+| `odoo-cli db-reset` | Drop and recreate the database |
+| `odoo-cli test [modules]` | Run tests on a dedicated test database |
+| `odoo-cli sql "SELECT ..."` | Execute a SQL query |
+| `odoo-cli psql` | Open an interactive PostgreSQL shell |
+| `odoo-cli shell` | Python REPL with Odoo environment |
+| `odoo-cli run "code"` | Execute Python in Odoo environment |
+| `odoo-cli checkout [version]` | Switch all repos to a version |
+| `odoo-cli pull` | Pull latest changes across all repos |
+| `odoo-cli venv` | Recreate the Python virtual environment |
+
+### Installed Modules
+
+{modules}
+
+## Python Environment
+
+The virtual environment is at `odoo/.venv/`. When running Python directly:
+```bash
+odoo/.venv/bin/python odoo/odoo-bin [options]
+```
+
+## Git Workflow
+
+Feature branches should be pushed to the dev remote (`odoo-dev`), not `origin`.
+"""
+
+
+SKILL_ODOO_CLI = """\
+Use this skill when the user wants to manage their Odoo development environment: \
+starting/stopping the server, updating modules, resetting the database, running tests, \
+executing SQL or Python code, switching versions, or managing repositories.
+
+## Commands
+
+All commands run from the workspace root directory.
+
+### Server
+
+- `odoo-cli start` — Start the Odoo server with configured modules and dev mode.
+- `odoo-cli update [modules]` — Update modules without restarting. Defaults to all modules. Runs `--stop-after-init`.
+- `odoo-cli db-reset` — Drop and recreate the database, reinstall configured modules. Requires interactive confirmation.
+
+### Database
+
+- `odoo-cli sql "query"` — Execute a SQL query on the database. Output goes to stdout.
+- `odoo-cli psql` — Open an interactive PostgreSQL shell.
+
+### Python / Odoo Shell
+
+- `odoo-cli shell` — Interactive Python REPL with Odoo environment (`env`, models, cursor).
+- `odoo-cli run "code"` — Execute a Python one-liner in Odoo environment. Non-interactive, suitable for automation.
+
+### Testing
+
+- `odoo-cli test [modules]` — Run tests on a dedicated test database. Defaults to configured modules.
+  - `--tags/-t "tag"` — Filter by test tags.
+  - `--keep-db` — Keep the test database for inspection.
+  - `--verbose/-v` — Show full unfiltered output.
+
+### Repository Management
+
+- `odoo-cli checkout [version]` — Switch all repos to a version branch. Validates version exists, checks for uncommitted changes.
+  - `--yes/-y` — Skip feature branch confirmation (still fails on dirty repos or unpushed commits).
+- `odoo-cli pull` — Pull latest changes (fast-forward only) across all repos.
+- `odoo-cli venv` — Recreate the Python virtual environment with correct Python version and dependencies.
+
+### Configuration
+
+Settings are stored in `config.toml` at the workspace root. The `odoo.conf` file is generated at `odoo/odoo.conf`.
+"""

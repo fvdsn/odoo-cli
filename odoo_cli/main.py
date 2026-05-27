@@ -1,6 +1,6 @@
 import typer
 
-from odoo_cli.commands import checkout, db_reset, init, pull, setup_venv, shell, sql, start, test, update
+from odoo_cli.commands import ai_setup, checkout, db_reset, init, pull, setup_venv, shell, sql, start, test, update
 
 app = typer.Typer(
     name="odoo-cli",
@@ -20,6 +20,7 @@ app.command()(sql.psql)
 app.command()(shell.shell)
 app.command()(shell.run)
 app.command()(test.test)
+app.command("ai-setup")(ai_setup.ai_setup)
 
 if __name__ == "__main__":
     app()
