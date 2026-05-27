@@ -1,0 +1,18 @@
+[project]
+name = "odoo-cli"
+version = "0.1.0"
+description = "CLI tool for Odoo development workflows"
+requires-python = ">=3.10"
+dependencies = [
+    "typer>=0.15",
+    "rich>=13",
+    "questionary>=2",
+    "tomli-w>=1",
+]
+
+[project.scripts]
+odoo-cli = "odoo_cli.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
