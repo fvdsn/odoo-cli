@@ -28,6 +28,41 @@ Configuration is saved to `config.toml` and reused on subsequent runs.
 After initialization, commands can be run from the workspace root or any nested
 directory inside the workspace.
 
+## Workspace layout
+
+An initialized workspace is not itself a Git repository. Instead, it contains
+one or more Odoo repositories:
+
+```text
+workspace/
+  config.toml
+  odoo/
+    odoo.conf
+    .venv/
+  enterprise/
+  documentation/
+  themes/
+  addons/
+```
+
+`config.toml` is the workspace marker. Existing-workspace commands search the
+current directory and its parents for the nearest valid `odoo-cli` config, so
+commands work from nested paths like `odoo/addons/sale`.
+
+## Typical workflow
+
+```bash
+odoo-cli init ~/src/odoo-workspace
+cd ~/src/odoo-workspace/odoo/addons/sale
+odoo-cli info
+odoo-cli start
+odoo-cli update sale
+odoo-cli test sale --tags test_sale
+```
+
+Use `odoo-cli config` to update workspace settings, then follow the printed
+hints when repository selection, version, or AI harness settings changed.
+
 ## Commands
 
 | Command | Description |
@@ -56,6 +91,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run python -m unittest discover -s tests
 uv run python -m compileall -q odoo_cli tests
+uv run --with build python -m build
 ```
 
 ## License
