@@ -3,6 +3,11 @@ name = "odoo-cli"
 version = "0.1.0"
 description = "CLI tool for Odoo development workflows"
 requires-python = ">=3.10"
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Frederic van der Essen" },
+]
 dependencies = [
     "typer>=0.15",
     "rich>=13",

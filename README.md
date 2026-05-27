@@ -55,3 +55,7 @@ Run `odoo-cli <command> --help` for detailed usage.
 uv run python -m unittest discover -s tests
 uv run python -m compileall -q odoo_cli tests
 ```
+
+## License
+
+MIT
