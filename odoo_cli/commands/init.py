@@ -40,22 +40,34 @@ from odoo_cli.repos import (
 )
 
 
-def run_wizard() -> dict:
+def run_wizard(existing: dict | None = None) -> dict:
+    """Run the setup wizard. If existing config is provided, use values as defaults."""
+    e = existing or {}
+    e_user = e.get("user", {})
+    e_repos = e.get("repositories", {})
+    e_pg = e.get("postgres", {})
+    e_odoo = e.get("odoo", {})
+    e_ai = e.get("ai", {})
+
     console.print()
-    console.print("[bold]Welcome to the Odoo workspace setup![/bold]")
-    console.print(
-        "This wizard will set up the standard Odoo repository structure\n"
-        "and configure your development environment.\n"
-        "We'll ask you a few questions to get started.\n"
-    )
+    if existing:
+        console.print("[bold]Updating workspace configuration[/bold]\n")
+    else:
+        console.print("[bold]Welcome to the Odoo workspace setup![/bold]")
+        console.print(
+            "This wizard will set up the standard Odoo repository structure\n"
+            "and configure your development environment.\n"
+            "We'll ask you a few questions to get started.\n"
+        )
 
     odoo_employee = questionary.confirm(
         "Are you an Odoo employee?",
-        default=False,
+        default=e.get("odoo_employee", False),
     ).unsafe_ask()
 
     full_name = questionary.text(
         "Full name:",
+        default=e_user.get("name", ""),
         validate=lambda v: len(v.strip()) > 0 or "Name cannot be empty",
     ).unsafe_ask()
 
@@ -71,35 +83,45 @@ def run_wizard() -> dict:
 
     email = questionary.text(
         "Email:",
+        default=e_user.get("email", ""),
         validate=validate_email,
     ).unsafe_ask()
 
     versions = get_available_versions()
+    default_version = e.get("version", "master")
     version = questionary.select(
         "Odoo version:",
         choices=versions,
+        default=default_version if default_version in versions else None,
     ).unsafe_ask()
 
     enterprise = questionary.confirm(
         "Clone the enterprise repository?",
-        default=odoo_employee,
+        default=e_repos.get("enterprise", odoo_employee),
     ).unsafe_ask()
 
     documentation = questionary.confirm(
         "Clone the documentation repository?",
-        default=False,
+        default=e_repos.get("documentation", False),
     ).unsafe_ask()
 
     themes = questionary.confirm(
         "Clone the themes repository?",
-        default=False,
+        default=e_repos.get("themes", False),
     ).unsafe_ask()
 
-    extra_addons: list[str] = []
+    prev_addons = e_repos.get("extra_addons", [])
+    extra_addons: list[str] = list(prev_addons)
+    if prev_addons:
+        console.print(f"  Current extra addons: {', '.join(prev_addons)}")
     if questionary.confirm(
-        "Add extra addons repositories?",
+        "Add extra addons repositories?" if not prev_addons else "Modify extra addons?",
         default=False,
     ).unsafe_ask():
+        extra_addons = []
+        for url in prev_addons:
+            if questionary.confirm(f"  Keep {url}?", default=True).unsafe_ask():
+                extra_addons.append(url)
         while True:
             url = questionary.text(
                 "Addons repo git URL (leave empty to stop):",
@@ -108,9 +130,10 @@ def run_wizard() -> dict:
                 break
             extra_addons.append(url)
 
+    has_custom_pg = e_pg.get("host") is not False and e_pg.get("host") is not None
     default_postgres = questionary.confirm(
         "Use default PostgreSQL connection? (localhost, default port, current user)",
-        default=True,
+        default=not has_custom_pg,
     ).unsafe_ask()
 
     if default_postgres:
@@ -122,14 +145,23 @@ def run_wizard() -> dict:
         }
     else:
         postgres = {
-            "host": questionary.text("PostgreSQL host:", default="localhost").unsafe_ask(),
+            "host": questionary.text(
+                "PostgreSQL host:",
+                default=str(e_pg.get("host", "localhost")) if e_pg.get("host") else "localhost",
+            ).unsafe_ask(),
             "port": int(questionary.text(
                 "PostgreSQL port:",
-                default="5432",
+                default=str(e_pg.get("port", 5432)) if e_pg.get("port") else "5432",
                 validate=lambda v: v.isdigit() or "Must be a number",
             ).unsafe_ask()),
-            "user": questionary.text("PostgreSQL user:", default="odoo").unsafe_ask(),
-            "password": questionary.text("PostgreSQL password:").unsafe_ask(),
+            "user": questionary.text(
+                "PostgreSQL user:",
+                default=str(e_pg.get("user", "odoo")) if e_pg.get("user") else "odoo",
+            ).unsafe_ask(),
+            "password": questionary.text(
+                "PostgreSQL password:",
+                default=str(e_pg.get("password", "")) if e_pg.get("password") else "",
+            ).unsafe_ask(),
         }
 
     console.print("  Checking PostgreSQL connection...", end=" ")
@@ -144,34 +176,36 @@ def run_wizard() -> dict:
 
     db_name = questionary.text(
         "Default database name:",
-        default="odoo-dev",
+        default=e_pg.get("db_name", "odoo-dev"),
     ).unsafe_ask()
 
     http_port = int(questionary.text(
         "HTTP port:",
-        default="8069",
+        default=str(e_odoo.get("http_port", 8069)),
         validate=lambda v: v.isdigit() or "Must be a number",
     ).unsafe_ask())
 
     websocket_port = int(questionary.text(
         "WebSocket port:",
-        default="8072",
+        default=str(e_odoo.get("websocket_port", 8072)),
         validate=lambda v: v.isdigit() or "Must be a number",
     ).unsafe_ask())
 
     data_dir = questionary.text(
         "Data directory:",
-        default="~/.local/share/Odoo",
+        default=e_odoo.get("data_dir", "~/.local/share/Odoo"),
     ).unsafe_ask()
 
     demo_data = questionary.confirm(
         "Load demo data?",
-        default=True,
+        default=e_odoo.get("demo_data", True),
     ).unsafe_ask()
 
+    prev_dev_mode = e_odoo.get("dev_mode", False)
     dev_mode = questionary.select(
         "Default run mode:",
         choices=["development (hot reload)", "production"],
+        default="development (hot reload)" if prev_dev_mode else "production",
     ).unsafe_ask()
     dev_mode = dev_mode.startswith("development")
 
@@ -180,9 +214,13 @@ def run_wizard() -> dict:
         apps.extend(ENTERPRISE_APPS)
     apps.sort()
 
+    prev_modules = set(e_odoo.get("install_modules", []))
     install_modules = questionary.checkbox(
         "Modules to install (space to select, enter to confirm):",
-        choices=apps,
+        choices=[
+            questionary.Choice(app, checked=app in prev_modules)
+            for app in apps
+        ],
     ).unsafe_ask()
 
     if odoo_employee:
@@ -196,6 +234,7 @@ def run_wizard() -> dict:
         if dev_remote == "custom remote":
             dev_remote_url = questionary.text(
                 "Custom remote URL (use {repo} as placeholder):",
+                default=e.get("remotes", {}).get("dev_url", ""),
                 validate=lambda v: len(v) > 0 or "URL cannot be empty",
             ).unsafe_ask()
         else:
@@ -206,9 +245,13 @@ def run_wizard() -> dict:
             dev_remote_url = f"git@github.com:{github_user}/{{repo}}.git"
 
     from odoo_cli.ai.harnesses import HARNESSES
+    prev_harnesses = set(e_ai.get("harnesses", []))
     ai_harnesses = questionary.checkbox(
         "AI harnesses to set up (space to select):",
-        choices=[questionary.Choice(label, value=key) for key, label in HARNESSES.items()],
+        choices=[
+            questionary.Choice(label, value=key, checked=key in prev_harnesses)
+            for key, label in HARNESSES.items()
+        ],
     ).unsafe_ask()
 
     return {
