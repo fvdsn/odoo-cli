@@ -179,6 +179,16 @@ def run_wizard(existing: dict | None = None) -> dict:
         default=e_pg.get("db_name", "odoo-dev"),
     ).unsafe_ask()
 
+    admin_user = questionary.text(
+        "Admin username:",
+        default=e_odoo.get("admin_user", "admin"),
+    ).unsafe_ask()
+
+    admin_password = questionary.text(
+        "Admin password:",
+        default=e_odoo.get("admin_password", "admin"),
+    ).unsafe_ask()
+
     http_port = int(questionary.text(
         "HTTP port:",
         default=str(e_odoo.get("http_port", 8069)),
@@ -275,6 +285,8 @@ def run_wizard(existing: dict | None = None) -> dict:
             "db_name": db_name,
         },
         "odoo": {
+            "admin_user": admin_user,
+            "admin_password": admin_password,
             "http_port": http_port,
             "websocket_port": websocket_port,
             "data_dir": data_dir,
