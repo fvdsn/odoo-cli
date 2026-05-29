@@ -9,9 +9,9 @@ from odoo_cli.postgres import pg_env, terminate_connections
 
 
 def test(
-    modules: str | None = typer.Argument(
-        None,
-        help="Comma-separated modules to test (default: all installed).",
+    modules: str = typer.Argument(
+        ...,
+        help="Modules to test: comma-separated module names, 'installed' for configured modules, or 'all' for everything.",
     ),
     tags: str | None = typer.Option(
         None,
@@ -40,6 +40,18 @@ def test(
     db_name = f"{workspace.database_name}-test"
     env = pg_env(config)
 
+    # Resolve module specifier
+    if modules == "installed":
+        installed = odoo_config.get("install_modules", [])
+        if not installed:
+            console.print("[red]No modules configured in workspace.[/red]")
+            raise typer.Exit(code=1)
+        target_modules = ",".join(installed)
+    elif modules == "all":
+        target_modules = "base"
+    else:
+        target_modules = modules
+
     # Create fresh test database
     terminate_connections(config, db_name)
     subprocess.run(
@@ -60,12 +72,6 @@ def test(
         console.print(f"    [dim]{result.stderr.strip()}[/dim]")
         raise typer.Exit(code=1)
     console.print("[green]done[/green]")
-
-    # Build test command
-    target_modules = modules
-    if not target_modules:
-        installed = odoo_config.get("install_modules", [])
-        target_modules = ",".join(installed) if installed else "base"
 
     addons_paths = [str(path) for path in configured_addons_paths(directory, config)]
 

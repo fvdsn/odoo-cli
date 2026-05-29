@@ -79,7 +79,7 @@ hints when repository selection, version, or AI harness settings changed.
 | `odoo start` | Start the Odoo server |
 | `odoo update [modules]` | Update modules without restarting (`all` by default) |
 | `odoo db-reset` | Drop and recreate the database |
-| `odoo test [modules]` | Run tests on a dedicated test database |
+| `odoo test <modules>` | Run tests (module name, `installed`, or `all`) |
 | `odoo sql "SELECT ..."` | Execute a SQL query |
 | `odoo psql` | Open an interactive PostgreSQL shell |
 | `odoo shell` | Python REPL with the Odoo environment loaded |

@@ -35,8 +35,9 @@ Commands can run from the workspace root or any nested directory inside the work
 
 ### Testing
 
-- `odoo test [modules]` — Run tests on a dedicated test database. Defaults to configured modules.
-  - `--tags/-t "tag"` — Filter by test tags.
+- `odoo test <modules>` — Run tests on a dedicated test database. Module argument is required.
+  - Use a module name (e.g. `stock_account`), comma-separated list, `installed` (configured modules), or `all` (every addon).
+  - `--tags/-t "tag"` — Filter by test tags. Bare names like `test_foo` are resolved to `/{module}:.test_foo`. `Class.method` format also works.
   - `--keep-db` — Keep the test database for inspection.
   - `--verbose/-v` — Show full unfiltered output.
 

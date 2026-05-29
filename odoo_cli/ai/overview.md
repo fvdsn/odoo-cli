@@ -33,7 +33,7 @@ Commands can be run from the workspace root or any nested directory inside the w
 | `odoo start` | Start the Odoo server |
 | `odoo update [modules]` | Update modules (default: all) |
 | `odoo db-reset` | Drop and recreate the database |
-| `odoo test [modules]` | Run tests on a dedicated test database |
+| `odoo test <modules>` | Run tests (module name, `installed`, or `all`) |
 | `odoo sql "SELECT ..."` | Execute a SQL query |
 | `odoo psql` | Open an interactive PostgreSQL shell |
 | `odoo shell` | Python REPL with Odoo environment |
