@@ -75,7 +75,6 @@ def test(
         db_name,
         "-i",
         target_modules,
-        "--test-enable",
         "--stop-after-init",
         "--no-http",
         "--http-port=0",
@@ -83,8 +82,24 @@ def test(
         "--log-level=test",
     )
 
+    # --test-enable is always needed to run tests during module installation.
+    cmd.append("--test-enable")
+
     if tags:
-        cmd.extend(["--test-tags", tags])
+        # Resolve bare tags into Odoo's tag format: [-][tag][/module][:class][.method]
+        # A bare name like "test_foo" becomes "/{module}:.test_foo" to match by method.
+        # A class.method like "TestFoo.test_bar" becomes "/{module}:TestFoo.test_bar".
+        # Already-qualified tags (containing / or :) are passed through.
+        resolved_parts = []
+        for t in tags.split(","):
+            t = t.strip()
+            if "/" in t or ":" in t:
+                resolved_parts.append(t)
+            elif "." in t:
+                resolved_parts.append(f"/{target_modules}:{t}")
+            else:
+                resolved_parts.append(f"/{target_modules}:.{t}")
+        cmd.extend(["--test-tags", ",".join(resolved_parts)])
 
     console.print(f"  Running tests for [bold]{target_modules}[/bold]...")
     console.print(f"  [dim]$ {' '.join(cmd)}[/dim]\n")
