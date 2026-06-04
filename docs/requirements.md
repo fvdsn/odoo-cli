@@ -456,6 +456,11 @@ linked_from = "19.0"
  - runs sql command in the current db, outputs the result
 
 ## Open points
+ - `odoo configure` non-interactive mode for agents
+   - `odoo config set` writes values but does not trigger side effects (e.g. cloning a repo)
+   - agents need a way to enable enterprise, add repositories, etc. without interactive prompts
+   - design a non-interactive path that performs the same side effects as the interactive wizard
+   - e.g. `odoo configure --enterprise --no-input` or side-effect-aware `odoo config set`
  - `odoo db reset` and `.data/` lifecycle
    - db commands should primarily act on PostgreSQL databases
    - decide later whether resetting a database should also clear that database's filestore/data directory
@@ -467,6 +472,12 @@ linked_from = "19.0"
  - `odoo doctor` [v1] — diagnose broken or incomplete setups
    - should be designed to provide genuinely helpful, actionable diagnostics
    - avoid being only a shallow checklist of installed tools
+ - `odoo pull` / `odoo fetch` [v1] — sync repositories with remotes
+   - clarify what "pull across repos" means in a bare-repo + worktree model
+   - fetch into `.repositories/` bare repos, then fast-forward worktrees?
+   - what happens with dirty worktrees or local commits?
+   - should it detect new dependencies in requirements.txt and prompt for `odoo venv`?
+   - define a "morning sync" workflow: pull, rebuild venv if needed, restart server
  - `odoo dump / restore / neutralize` [v2] — database lifecycle for support workflows
  - `odoo checkout` [v2] — clarify how branch switching should work in a worktree-first model
    - distinguish switching a worktree version from creating/using feature branches
