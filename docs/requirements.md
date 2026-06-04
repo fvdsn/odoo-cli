@@ -301,9 +301,15 @@ linked_from = "19.0"
  - **Customer support with custom addons**: linked worktree with isolated addon repos and shared Odoo source.
    `odoo worktree create customer-a 19.0 --linked-from 19.0 --addon customer-a-addons`
 
+## Phases
+
+- **v1**: Core dev workflow — init, configure (enterprise), start/stop/restart, test, update, shell, rpc, log, db commands, basic worktrees, config, info, status, venv
+- **v2**: Support workflows — linked worktrees, `odoo repo add`, dump/restore/neutralize
+- **v3**: Platform — MCP frontend, cloud backend, extensions
+
 ## Available commands
 
-### `odoo init`
+### `odoo init` [v1]
  - bootstrap the workspace: clone repos, create initial worktree, set up venv
  - minimal, good defaults, fully unattended — no questions asked
  - `odoo init 19.0` — create initial worktree `19.0` on version `19.0`
@@ -316,7 +322,7 @@ linked_from = "19.0"
    - NOTE: consider auto-installing postgres (apt/brew) if Anthony requires it
    - if installed but connection fails: tell user to run `odoo configure`
 
-### `odoo configure`
+### `odoo configure` [v1]
  - interactive wizard for advanced setup (postgres credentials, enterprise, etc.)
  - this is where all the questions live — `odoo init` never asks
  - optional repository config values are either `false` (disabled) or a git URL/local path (enabled)
@@ -332,7 +338,7 @@ linked_from = "19.0"
    - also accepts HTTPS URLs (for token-based auth or private mirrors)
    - supports local paths for users who already have the repo elsewhere
 
-### `odoo repo add`
+### `odoo repo add` [v2]
  - register and clone/fetch an additional git repository into `.repositories/`
  - `odoo repo add customer-a-addons git@github.com:customer/customer-a-addons.git`
  - `odoo repo add support-tools git@github.com:odoo/support-tools.git`
@@ -342,7 +348,7 @@ linked_from = "19.0"
  - repository names follow the same character rules as worktree names and cannot collide with built-in repository names unless the command is explicitly configuring that built-in repository
  - no local paths for this command in v1
 
-### `odoo config`
+### `odoo config` [v1]
  - non-interactive workspace configuration for scripts and agents
  - `odoo config list` — print current config keys and values, with secrets redacted by default
  - `odoo config get $KEY` — print one value, where `$KEY` is a dotted path like `postgres.host`
@@ -350,18 +356,21 @@ linked_from = "19.0"
  - supports `--json` for machine-readable output
  - does not ask questions; validation errors fail with clear messages
 
-### `odoo worktree create`
- - create a new full worktree by default (git worktrees from .repositories/)
+### `odoo worktree create` [v1]
+ - create a new worktree (git worktrees from .repositories/)
  - `odoo worktree create 19.0` — create worktree `19.0` on version `19.0`
  - `odoo worktree create my-feature 19.0` — create worktree `my-feature` on version `19.0`
- - `odoo worktree create customer-a 19.0 --linked-from 19.0 --addon customer-a-addons --addon support-tools` — create a linked worktree for custom addon work on an existing Odoo source tree
  - `odoo worktree create my-feature` is invalid because the version would be ambiguous
  - the version argument is used to choose the initial checkout; it is not persisted in workspace.toml
- - full worktrees include odoo.git plus any optional repositories currently enabled in workspace.toml
+ - includes odoo.git plus any optional repositories currently enabled in workspace.toml
  - if odoo.git does not have the requested version, fail
- - for full worktrees, if an optional repository does not have the requested version, skip that repository and report a warning
- - `--linked-from $WORKTREE` creates a linked worktree:
-   - `$WORKTREE` must already exist
+ - if an optional repository does not have the requested version, skip that repository and report a warning
+ - sets up venv if needed (reuses existing .venvs/{version} if available)
+
+### `odoo worktree create --linked-from` [v2]
+ - `odoo worktree create customer-a 19.0 --linked-from 19.0 --addon customer-a-addons --addon support-tools`
+ - creates a linked worktree for custom addon work on an existing Odoo source tree
+ - `--linked-from $WORKTREE` — `$WORKTREE` must already exist
    - the requested version must match the source worktree's detected Odoo version
    - standard source repositories (`odoo`, `documentation`, and enabled standard repositories such as `enterprise` and `themes`) are symlinked from the source worktree
    - attached addon repositories are checked out as real git worktrees at the linked worktree root
@@ -371,23 +380,22 @@ linked_from = "19.0"
  - addon repositories are checked out as siblings of `odoo` and `enterprise`
  - after creation, addon membership is determined by the directories present at the worktree root
  - addon repositories use a branch matching the Odoo version when it exists; otherwise they use the repository's default branch and report a warning
- - sets up venv if needed (reuses existing .venvs/{version} if available)
 
-### `odoo worktree list`
+### `odoo worktree list` [v1]
  - list all worktrees with their version, branch, and running server status
 
-### `odoo worktree remove $NAME`
+### `odoo worktree remove $NAME` [v1]
  - stops any running servers for the worktree
  - cleans up `.run/` state for the worktree (logs, pid, socket, restart args)
  - leaves `.data/` persistent database data untouched by default
  - deleting `.data/` requires an explicit flag or confirmation
  - removes the git worktree
 
-### `odoo venv [--apt]`
+### `odoo venv [--apt]` [v1]
  - create/recreate the venv for the current version
  - `--apt` installs deps system-wide with apt instead of in a venv
 
-### `odoo start / restart / stop`
+### `odoo start / restart / stop` [v1]
  - `odoo start` — starts the server in the current terminal
  - on first start for a database, creates/initializes the database and installs configured apps
  - `odoo start --background` — starts in the background (useful for agents)
@@ -400,25 +408,25 @@ linked_from = "19.0"
    - secrets are resolved again from workspace.toml or environment at restart time
  - `odoo stop` — stop a running server
 
-### `odoo info`
+### `odoo info` [v1]
  - overview of the current setup: server port, credentials, branch statuses, etc.
 
-### `odoo status`
+### `odoo status` [v1]
  - short daily glance at the current target
  - shows current worktree, database, server status, URL, ports, version/branch, dirty repos
  - includes a concise next useful action when obvious
 
-### `odoo pull`
+### `odoo pull` [v1]
  - pulls latest changes across the repos
 
-### `odoo test $MODULE [-t $TAG]`
+### `odoo test $MODULE [-t $TAG]` [v1]
  - creates or reuses a test db and runs the tests
  - only outputs final test results by default
  - `$MODULE`: module name, `installed` (configured modules), or `all` (every addon)
  - `-t test_foo` resolves to the correct odoo test tag format automatically
  - tours: TBD (requires running server + browser, likely a separate `odoo test-tour`)
 
-### `odoo log`
+### `odoo log` [v1]
  - logs are always written to `.run/{worktree}/{db}/log` as plain text
  - `odoo log` — show recent logs
  - `odoo log --follow` — tail logs in real time
@@ -426,25 +434,25 @@ linked_from = "19.0"
  - `odoo log --search "error"` — search/filter logs
  - future: structured jsonl format with `--format jsonl`
 
-### `odoo shell [-c $CODE]`
+### `odoo shell [-c $CODE]` [v1]
  - opens an interactive python shell, or executes code and returns the output
 
-### `odoo rpc $PATH [$JSON]`
+### `odoo rpc $PATH [$JSON]` [v1]
  - executes an rpc call to the current server (new path-based API)
  - `odoo rpc /res.partner/search_read '{"domain": [], "fields": ["name"], "limit": 5}'`
  - JSON payload as second arg, or from stdin for larger payloads
  - output: JSON to stdout (pipeable to jq, parseable by agents)
 
-### `odoo update [modules]`
+### `odoo update [modules]` [v1]
  - update modules in the database (default: all installed)
 
-### `odoo db reset`
+### `odoo db reset` [v1]
  - drops and recreates the db, re-installs configured apps
 
-### `odoo db shell`
+### `odoo db shell` [v1]
  - opens a psql shell in the current db
 
-### `odoo db query [--csv] $SQL`
+### `odoo db query [--csv] $SQL` [v1]
  - runs sql command in the current db, outputs the result
 
 ## Open points
@@ -453,13 +461,16 @@ linked_from = "19.0"
    - decide later whether resetting a database should also clear that database's filestore/data directory
 
 ## Future commands (to be designed)
- - `odoo where` — show exactly what the CLI inferred for the current command context
+ - `odoo where` [v1] — show exactly what the CLI inferred for the current command context
    - workspace root, worktree, database, venv, addons paths, data dir, log file
    - sanitized `odoo-bin` command args for debugging and copy/paste
- - `odoo doctor` — diagnose broken or incomplete setups
+ - `odoo doctor` [v1] — diagnose broken or incomplete setups
    - should be designed to provide genuinely helpful, actionable diagnostics
    - avoid being only a shallow checklist of installed tools
- - `odoo checkout` — clarify how branch switching should work in a worktree-first model
+ - `odoo dump / restore / neutralize` [v2] — database lifecycle for support workflows
+ - `odoo checkout` [v2] — clarify how branch switching should work in a worktree-first model
    - distinguish switching a worktree version from creating/using feature branches
    - define behavior when a branch exists in some repos but not others
- - `odoo scaffold` — generate a new module skeleton
+ - `odoo scaffold` [v2] — generate a new module skeleton
+ - MCP frontend [v3] — expose CLI operations as MCP tools for AI agents
+ - Cloud backend [v3] — Odoo.sh / managed workspace support
