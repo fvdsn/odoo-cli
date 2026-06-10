@@ -25,7 +25,8 @@ Runtime target:
 
 Reasons:
 
-- Debian 12 provides Python 3.11, including the standard-library `tomllib`
+- Debian 12 provides Python 3.11, with the standard-library `configparser` we
+  use to read/write `odoo.conf`
 - bash installers should only need to find a supported Python interpreter, not
   manage Python package installation
 - `click` gives the CLI useful command ergonomics, validation, shell completion,
@@ -41,7 +42,7 @@ Consequences:
 - no Rich
 - no questionary
 - no pydantic/dataclass serializers
-- no TOML writer dependency
+- no TOML/config writer dependency (use stdlib `configparser` for `odoo.conf`)
 - no runtime dependency installation step for the upstream bash installer
 
 Vendoring policy:
@@ -55,11 +56,12 @@ Vendoring policy:
 import `click`; they should raise typed exceptions and return structured result
 objects.
 
-TOML reading/writing:
+Config file reading/writing:
 
-- use `tomllib` from the standard library for reading
-- write `workspace.toml` through a small internal TOML writer that supports the
-  subset of TOML we generate
+- the only config file is the shared `odoo.conf` at `~/.config/odoo/odoo.conf`,
+  in Odoo's own ini format
+- read and write it with the standard-library `configparser`
+- there is no `workspace.toml` and no TOML writer
 - preserving user comments is not a v1 requirement
 
 Testing:
@@ -126,8 +128,8 @@ odoo_cli/
     commands/
         __init__.py
         init.py
-        configure.py
-        config.py
+        config.py            # bare wizard + get/set/list/enable
+        module.py            # odoo module install
         repo.py
         worktree.py
         start.py
@@ -147,12 +149,13 @@ odoo_cli/
         models.py
         paths.py
         workspace.py
-        config.py
+        odoo_conf.py         # OdooConf reader/writer (configparser)
         target.py
         repositories.py
         worktrees.py
         addons.py
         venvs.py
+        modules.py           # install / read installed modules
         odoo_bin.py
         postgres.py
         database.py
@@ -197,11 +200,14 @@ Represents a resolved workspace root.
 Fields:
 
 - `root: Path`
-- `config: WorkspaceConfig`
+- `config: OdooConf`
+
+The workspace is identified by the presence of `root / ".repositories/odoo.git"`;
+there is no marker config file.
 
 Important paths:
 
-- `workspace.root / "workspace.toml"`
+- `~/.config/odoo/odoo.conf` (shared config, outside the workspace)
 - `workspace.root / ".repositories"`
 - `workspace.root / ".venvs"`
 - `workspace.root / ".run"`
@@ -210,43 +216,47 @@ Important paths:
 
 `Workspace` should not do heavy work. It is a value object with path helpers.
 
-### `WorkspaceConfig`
+### `OdooConf`
 
-Parsed `workspace.toml`.
+Parsed `~/.config/odoo/odoo.conf` (Odoo's own ini format, read via `configparser`).
 
 Responsibilities:
 
-- expose workspace-level defaults
-- expose repository registry
-- expose per-worktree overrides
-- resolve inherited Odoo settings for a target worktree
+- expose the shared Odoo server settings (`db_host`, `db_port`, `db_user`,
+  `db_password`, `dev_mode`, `without_demo`, `log_level`, ...)
 - redact secrets for display
+- support reading and writing individual keys for `odoo config get/set`
 
 It should not:
 
+- store the repository list (derived from `.repositories/`)
+- store per-worktree overrides (there are none in v1)
 - infer worktree versions
 - list active addon directories
-- store runtime ports
-- store process state
-- store persistent data paths beyond configured overrides
+- store runtime ports, process state, or data paths
+
+It holds only workspace-shared settings. Per-instance values (`addons_path`,
+`data_dir`, `-d`, ports) are never read from or written to it; they are computed
+by services and passed as CLI args that override the conf.
 
 ### `RepositorySpec`
 
-Registered repository source.
+A repository derived from the filesystem, not a registry entry.
 
 Fields:
 
-- `name: str`
-- `url: str | None`
-- `enabled: bool`
-- `builtin: bool`
+- `name: str` (from the `.repositories/{name}.git` directory)
+- `url: str | None` (the bare repo's git `origin` remote)
 
 Rules:
 
 - repository names share one flat namespace
-- `odoo` and `documentation` are enabled by default
-- optional builtins such as `enterprise`, `themes`, and `upgrade` may be false
-- customer addon repositories are registered by `odoo repo add`
+- a repository is "enabled" iff `.repositories/{name}.git` exists; `odoo` and
+  `documentation` are cloned by `odoo init`
+- optional builtins (`enterprise`, `themes`, `upgrade`) exist only once enabled
+  via `odoo config enable`
+- customer addon repositories are added by `odoo repo add`
+- there is no stored enabled/disabled flag or URL; both come from disk
 
 ### `Worktree`
 
@@ -256,16 +266,19 @@ Fields:
 
 - `name: str`
 - `path: Path`
-- `linked_from: str | None`
+- `linked_from: str | None` (derived, not stored)
 
 Derived facts:
 
 - version from `path / "odoo/odoo/release.py"`
+- `linked_from`: `None` for a full worktree; for a linked worktree, the source
+  worktree name read from the `odoo/` symlink target (a symlinked `odoo/` is what
+  makes a worktree linked)
 - active standard repos from directories/symlinks present in the worktree
 - active custom addons from filesystem discovery
 
-`workspace.toml` does not need an entry for every full worktree. It only needs
-entries for overrides and linked worktrees.
+The filesystem is the authoritative list of worktrees: every top-level directory
+other than the dot-directories is one. No config entry is needed for any worktree.
 
 ### `Target`
 
@@ -351,29 +364,32 @@ them without becoming a second business layer.
 
 Responsibilities:
 
-- find active workspace using the requirements resolution order
-- validate `workspace.toml` marker
-- load config
-- create initial workspace skeleton for `odoo init`
+- find active workspace using the requirements resolution order (`ODOO_DIR` else `~/odoo`)
+- validate the workspace by the presence of `.repositories/odoo.git`
+- load the shared `odoo.conf`
+- create initial workspace skeleton and write the default `odoo.conf` for `odoo init`
 
 ### `ConfigService`
 
+Backs the `odoo config` command (bare wizard + `get`/`set`/`list`/`enable`).
+
 Responsibilities:
 
-- read/write `workspace.toml`
-- merge workspace defaults with worktree overrides
-- redact secrets for output
-- update workspace-level config through `odoo configure`
-- update worktree overrides through `odoo configure -w`
+- read/write the shared `~/.config/odoo/odoo.conf` via `configparser`
+- get/set/list individual keys for the scriptable subcommands
+- redact secrets (`db_password`) for output, with an explicit reveal path
+- drive the interactive wizard (postgres connection, dev mode, demo data, ...)
+- enable optional builtin repositories (delegates the clone to `RepositoryService`)
 
-It should expose explicit methods rather than generic nested mutation wherever
-the UX is still being designed.
+It should expose explicit methods rather than generic nested mutation.
 
 Examples:
 
-- `set_repository(name, url_or_false)`
-- `set_worktree_odoo_overrides(worktree, overrides)`
-- `clear_worktree_override(worktree, key)`
+- `get(key)` / `set(key, value)` / `list(reveal=False)`
+- `enable_repository(name, url=None, scope=...)`  # side-effecting: clone + optional worktree checkout
+
+There are no per-worktree override methods in v1. Repository URLs are never
+written here; enabling a repo is a clone, and its URL is the git remote.
 
 ### `RepositoryService`
 
@@ -400,18 +416,19 @@ Responsibilities:
 
 Full worktree creation:
 
-- creates real git worktrees for `odoo`, `documentation`, and enabled optional
-  standard repositories
+- creates real git worktrees for `odoo`, `documentation`, and every optional
+  standard repository present in `.repositories/`
 - skips optional repositories that lack the requested version and reports a
   warning
 
 Linked worktree creation:
 
-- validates `linked_from`
+- validates the `linked_from` source worktree exists
 - validates requested version against source worktree detected version
 - symlinks standard repositories from source worktree
 - checks out addon repositories as real git worktrees at the linked worktree root
-- writes only `linked_from` to `workspace.toml`
+- stores nothing: the worktree is linked because its `odoo/` is a symlink, and
+  the symlink target records the source
 
 ### `TargetResolver`
 
@@ -444,8 +461,7 @@ It should only read the filesystem. It should not read an `addons = [...]` list.
 Responsibilities:
 
 - detect Odoo Python requirement from `odoo/odoo/release.py`
-- resolve shared venv path for detected version
-- apply worktree venv override if configured
+- resolve shared venv path `.venvs/{version}` for the detected version
 - create/rebuild venv
 - install Odoo requirements
 
@@ -453,23 +469,26 @@ Responsibilities:
 
 Responsibilities:
 
-- build PostgreSQL environment from workspace config
+- build the PostgreSQL environment from the `db_*` settings in `odoo.conf`
 - check connection
 - create/drop databases
 - run SQL
 - terminate database connections before reset
 
-PostgreSQL passwords should be passed through environment variables, not command
-arguments.
+The PostgreSQL password is read from `odoo.conf` and passed through `PGPASSWORD`,
+not on the command line.
 
 ### `DatabaseService`
 
 Responsibilities:
 
-- initialize default DB on first start
-- reset DB
-- install configured modules during initialization/reset
+- initialize an empty DB on first start (no modules)
+- reset DB: read the currently installed modules, drop/recreate, reinstall that set
 - expose `db shell` and `db query`
+
+Installed modules are read from the database (`ir_module_module`); there is no
+configured module list. Module installation itself is delegated to
+`ModuleService` / `OdooBinService` (`odoo module install`).
 
 `db reset` should keep the `.data` lifecycle open until the design decision is
 made.
@@ -481,12 +500,14 @@ Responsibilities:
 - build all `odoo-bin` command specifications
 - expose high-level builders for server start, module install, module update,
   tests, shell, and other direct Odoo invocations
-- translate resolved workspace/worktree/database settings into `odoo-bin`
-  command-line arguments
+- rely on odoo-bin auto-loading the shared `~/.config/odoo/odoo.conf`; do NOT
+  pass `-c` and do NOT duplicate `odoo.conf` values into argv
+- only add the per-instance args that must override the conf: `--addons-path`,
+  `--data-dir`, `-d {database}`, and the allocated `--http-port`/`--gevent-port`
 - include deterministic addons paths from `AddonsPathResolver`
 - include per-instance data directories from `ServerInstance`
-- include PostgreSQL connection settings without leaking secrets into process
-  arguments
+- the PostgreSQL password comes from `odoo.conf` (read by odoo-bin itself), so it
+  never appears in process arguments
 - apply Odoo-version-specific behavior in one place
 - validate that requested CLI features are supported by the target Odoo version
 - produce sanitized/restartable argv for `.run/{worktree}/{db}/args`
@@ -547,7 +568,8 @@ These should call other services rather than reimplement discovery.
 Responsibilities:
 
 - resolve current server URL from run state
-- resolve Odoo application credentials
+- authenticate with the v1 development default `admin` / `admin` (configurable
+  Odoo login credentials are a v2 feature)
 - execute JSON RPC/path RPC
 - return JSON-compatible data
 
@@ -602,7 +624,7 @@ def status(ctx: CliContext, worktree: str | None, db: str | None) -> None:
 Command modules should not:
 
 - construct `odoo-bin` arguments directly
-- parse `workspace.toml` directly
+- read or write `odoo.conf` directly (go through `ConfigService`)
 - manually inspect `.run`
 - manually infer addons paths
 - call `sys.exit`
@@ -679,15 +701,15 @@ Use:
 
 - `tempfile.TemporaryDirectory` for isolated workspaces
 - fake backend implementations for process, git, and database operations
-- small fixture builders for `Workspace`, `Worktree`, `Target`, and
-  `WorkspaceConfig`
+- small fixture builders for `Workspace`, `Worktree`, `Target`, and `OdooConf`
 - `unittest.mock` only at process/backends boundaries
 
 High-value unit coverage:
 
-- `WorkspaceResolver`: marker detection, invalid workspace errors, workspace
-  creation paths
-- `ConfigService`: TOML parsing/writing, inheritance, overrides, redaction
+- `WorkspaceResolver`: marker detection (`.repositories/odoo.git`), invalid
+  workspace errors, workspace creation paths
+- `ConfigService`: `odoo.conf` (ini) get/set/list, redaction, and `enable`
+  side effects
 - `TargetResolver`: explicit flag, cwd, only-worktree, and ambiguity errors
 - `RepositoryService`: repository registry validation and planned checkout
   operations
@@ -768,7 +790,8 @@ The e2e suite should cover a small number of use-case flows from
 - initialize a workspace for one Odoo version
 - start the server in the background
 - verify `status`, `info`, URL, ports, and log paths
-- create/reset a database and install configured modules
+- install a module with `odoo module install`, then reset the database and
+  confirm the module is reinstalled (DB is the source of truth)
 - update a simple module
 - perform a minimal RPC login or health check when the server is running
 - stop the server and confirm stale runtime state is handled
@@ -785,17 +808,17 @@ tests should grow with the implementation.
 
 1. Create the Click entrypoint and service container.
 2. Implement `core.errors`, `core.models`, and `cli.context`.
-3. Implement workspace/config loading with `workspace.toml` and the
-   `[odoo_cli] schema_version = 1` marker.
+3. Implement workspace resolution (marker `.repositories/odoo.git`) and the
+   `OdooConf` reader/writer over `~/.config/odoo/odoo.conf`.
 4. Implement `TargetResolver`.
-5. Implement repository registry and full worktree services.
+5. Implement filesystem-derived repositories and full worktree services.
 6. Implement addons path resolution.
 7. Implement venv resolution.
 8. Implement `OdooBinService` and its version capability table.
 9. Implement run state, port allocation, and server start/stop.
-10. Implement DB reset/update/shell/query.
-11. Implement info/status/log/rpc/test.
-12. Add `odoo configure -w` for worktree overrides.
+10. Implement DB reset (read installed modules from DB) / update / shell / query.
+11. Implement info/status/log/rpc/test and `odoo module install`.
+12. Implement `odoo config` (wizard + get/set/list/enable).
 13. Add linked worktrees and `odoo repo add`.
 14. Prepare MCP/backend extension points after the local CLI is stable.
 
@@ -807,8 +830,8 @@ new architecture.
 
 Do not preserve:
 
-- old workspace filename or marker conventions
-- generated `odoo.conf`
+- `workspace.toml` or any CLI-specific marker/config file
+- the old per-worktree `odoo.conf` generated inside each repo
 - workspace-level server ports
 - global mutable facts that can be inferred from source/layout/runtime state
 - command modules that implement their own target/config/addons resolution
@@ -818,8 +841,11 @@ The implementation target is:
 
 - Click for CLI wiring and prompts
 - stdlib output helpers
-- `workspace.toml` with `[odoo_cli] schema_version = 1`
-- no generated `odoo.conf`
+- a single shared `odoo.conf` at `~/.config/odoo/odoo.conf` (Odoo's standard
+  auto-loaded location), written by `odoo init`
+- workspace marker is the presence of `.repositories/odoo.git`
+- per-instance values (addons path, data dir, db, ports) computed and passed as
+  CLI args that override `odoo.conf`
 - root `.run` and `.data`
 - runtime ports in `.run/{worktree}/{db}/ports`
 - worktree versions inferred from source
