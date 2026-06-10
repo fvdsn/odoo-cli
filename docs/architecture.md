@@ -306,12 +306,14 @@ Fields:
 
 - `target: Target`
 - `run_dir: Path`
-- `data_dir: Path`
+- `data_dir: Path | None`
 
 Path rules:
 
 - `run_dir = workspace.root / ".run" / worktree / database`
-- `data_dir = workspace.root / ".data" / worktree / database`
+- v1: `data_dir` is `None` — odoo-bin uses its default location (shared by all
+  dbs/servers) and the CLI passes no `--data-dir`
+- v2: `data_dir = workspace.root / ".data" / worktree / database`
 
 Ports belong to `ServerInstance`, not to a worktree.
 
@@ -490,8 +492,9 @@ Installed modules are read from the database (`ir_module_module`); there is no
 configured module list. Module installation itself is delegated to
 `ModuleService` / `OdooBinService` (`odoo module install`).
 
-`db reset` should keep the `.data` lifecycle open until the design decision is
-made.
+In v1, `db reset` acts only on the PostgreSQL database (drop/recreate) and does
+not touch the shared default data_dir / filestore. The per-instance `.data`
+lifecycle is a v2 concern.
 
 ### `OdooBinService`
 
@@ -503,9 +506,10 @@ Responsibilities:
 - rely on odoo-bin auto-loading the shared `~/.config/odoo/odoo.conf`; do NOT
   pass `-c` and do NOT duplicate `odoo.conf` values into argv
 - only add the per-instance args that must override the conf: `--addons-path`,
-  `--data-dir`, `-d {database}`, and the allocated `--http-port`/`--gevent-port`
+  `-d {database}`, and the allocated `--http-port`/`--gevent-port`
 - include deterministic addons paths from `AddonsPathResolver`
-- include per-instance data directories from `ServerInstance`
+- v1: do NOT pass `--data-dir` (odoo-bin uses its default, shared data location);
+  v2 adds per-instance `--data-dir` from `ServerInstance`
 - the PostgreSQL password comes from `odoo.conf` (read by odoo-bin itself), so it
   never appears in process arguments
 - apply Odoo-version-specific behavior in one place
@@ -851,9 +855,9 @@ The implementation target is:
 - a single shared `odoo.conf` at `~/.config/odoo/odoo.conf` (Odoo's standard
   auto-loaded location), written by `odoo init`
 - workspace marker is the presence of `.repositories/odoo.git`
-- per-instance values (addons path, data dir, db, ports) computed and passed as
-  CLI args that override `odoo.conf`
-- root `.run` and `.data`
+- per-instance values (addons path, db, ports) computed and passed as CLI args
+  that override `odoo.conf`; v1 does not pass `--data-dir` (odoo-bin default)
+- root `.run` only in v1 (just the `ports` file); `.data` isolation is v2
 - runtime ports in `.run/{worktree}/{db}/ports`
 - worktree versions inferred from source
 - addons inferred from filesystem layout

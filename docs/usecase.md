@@ -12,13 +12,13 @@ The examples intentionally avoid duplicated state:
 - active custom addons are inferred from the worktree filesystem
 - the repository set is read from `.repositories/` and the worktree layout from disk
 - assigned server ports live in `.run/{worktree}/{db}/ports`
-- persistent Odoo data lives in `.data/{worktree}/{db}/`
 - the only configuration file is the shared `~/.config/odoo/odoo.conf` (Odoo's own
   format); the CLI keeps no `workspace.toml` and stores no derived runtime facts
 
 In v1 the server runs in the foreground (Ctrl-C to stop), so `.run/{worktree}/{db}/`
 holds only the `ports` file. The pid/log/socket/args files appear with the v2
-server lifecycle.
+server lifecycle. v1 also leaves persistent data in odoo-bin's default location
+(shared by all dbs/servers); the per-instance `.data/{worktree}/{db}/` arrives in v2.
 
 ## 1. First local Odoo setup
 
@@ -57,14 +57,12 @@ Expected workspace setup:
         19.0/
             odoo-19.0/
                 ports
-    .data/
-        19.0/
-            odoo-19.0/
-                filestore/
     19.0/
         odoo/
         documentation/
 ```
+
+(Persistent data is in odoo-bin's default `data_dir`, not under `~/odoo` in v1.)
 
 `odoo init` writes the shared `~/.config/odoo/odoo.conf` with good defaults:
 
@@ -114,10 +112,6 @@ Expected workspace setup:
         19.0/
             odoo-19.0/
                 ports
-    .data/
-        19.0/
-            odoo-19.0/
-                filestore/
     19.0/
         odoo/
         documentation/
@@ -214,13 +208,6 @@ Expected workspace setup:
         master/
             odoo-master/
                 ports
-    .data/
-        19.0/
-            odoo-19.0/
-                filestore/
-        master/
-            odoo-master/
-                filestore/
     19.0/
         odoo/
         documentation/
@@ -237,8 +224,9 @@ Source of truth:
   `-w` / `--worktree`
 - default databases are derived from the targeted worktree: `odoo-19.0` and
   `odoo-master`
-- each `(worktree, database)` pair has its own `.run/` and `.data/` directories
+- each `(worktree, database)` pair has its own `.run/` directory (just `ports` in v1)
 - each server auto-allocates a distinct port, so both can run at once
+- in v1 both share odoo-bin's default data location; per-instance `.data/` is v2
 
 ## 4. Feature development with a full worktree
 
@@ -266,10 +254,6 @@ Expected workspace setup:
         fix-pos-flow/
             odoo-fix-pos-flow/
                 ports
-    .data/
-        fix-pos-flow/
-            odoo-fix-pos-flow/
-                filestore/
     fix-pos-flow/
         odoo/
         documentation/

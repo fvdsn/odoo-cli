@@ -25,6 +25,11 @@ were specced as v1 but pushed to v2; they keep a `[v2]` tag inline in
    v1 is foreground-only: `odoo start` runs in the terminal, Ctrl-C to stop, and
    `.run/{worktree}/{db}/` holds only the `ports` file. v2 adds background mode,
    the pid/socket/args/log files under `.run/`, and restart from sanitized args.
+ - **Per-instance persistent data** — isolating each `(worktree, db)`'s data under
+   `.data/{worktree}/{db}/` and passing it as `--data-dir`. v1 uses odoo-bin's
+   default data location, shared by all dbs/servers (filestore is still namespaced
+   per database name, but sessions and the rest of the data_dir are shared). v2
+   also decides whether `db reset` clears that database's filestore.
  - **`odoo config` wizard** — the bare interactive `odoo config` (postgres
    connection, enterprise, dev mode, ...). v1 keeps only `get`/`set`/`list`/`enable`.
  - **`odoo venv --apt`** — system-wide apt install path (v1 keeps plain `odoo venv`).

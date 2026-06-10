@@ -41,18 +41,17 @@
     .run/                       <- ephemeral runtime state, per server instance
         master/                 <- worktree name
             odoo-master/        <- default db
-                pid
-                log
-                socket
-                args            <- sanitized start parameters (for restart)
+                ports           <- v1: only this file (foreground server)
+                pid             <- v2 (background lifecycle)
+                log             <- v2
+                socket          <- v2
+                args            <- v2: sanitized start parameters (for restart)
             customer-a/         <- explicit db
-                pid
-                log
-                socket
-                args            <- sanitized start parameters (for restart)
-    .data/                      <- persistent Odoo data, per database
-        master/
-            odoo-master/
+                ports
+                ...             <- pid/log/socket/args are v2
+    .data/                      <- v2: persistent Odoo data, per database
+        master/                 <- v1 uses odoo-bin's default data_dir instead
+            odoo-master/            (shared by all dbs/servers; not isolated)
                 filestore/
             customer-a/
                 filestore/
@@ -130,9 +129,10 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
  - per-instance values are NOT written to `odoo.conf`; the CLI computes them and
    passes them as CLI args, which override the conf file:
    - `addons_path` (per worktree, auto-discovered)
-   - `data_dir` → `.data/{worktree}/{db}` (per worktree+db)
    - `-d odoo-{worktree}` (per worktree+db)
    - allocated `http_port` / `gevent_port` (per worktree+db)
+   - `data_dir` is NOT passed in v1 — odoo-bin uses its default location, shared
+     by all dbs/servers; per-instance `--data-dir` → `.data/{worktree}/{db}` is v2
  - resulting override chain: `odoo.conf` (base) → environment variables → CLI args
  - because the running configuration is `odoo.conf` plus computed args, `odoo
    info` / `odoo where` are the canonical way to see the fully resolved config
@@ -256,9 +256,13 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
  - same mechanism for both http and webrtc ports
 
 ## Persistent data management
- - `.run/{worktree}/{db}/` only contains ephemeral process state: pid, log, socket, restart args
- - persistent Odoo data lives in `.data/{worktree}/{db}/`
- - the resolved `.data/{worktree}/{db}/` path is passed to `odoo-bin` as its data directory
+ - v1: persistent Odoo data lives in odoo-bin's default `data_dir`; the CLI does
+   not pass `--data-dir`. This means all databases and servers share one data
+   directory (filestore is still namespaced per database name inside it). Not
+   isolated, but acceptable for internal testing.
+ - v1 `.run/{worktree}/{db}/` only contains the `ports` file
+ - v2: persistent data moves to a per-instance `.data/{worktree}/{db}/` passed as
+   `--data-dir`, and `.run/` gains pid/log/socket/args with the server lifecycle
  - filestore is never treated as disposable runtime state
 
 ## Server interaction
@@ -493,8 +497,10 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_
 
 ## Open points
  - `odoo db reset` and `.data/` lifecycle
-   - db commands should primarily act on PostgreSQL databases
-   - decide later whether resetting a database should also clear that database's filestore/data directory
+   - v1: `odoo db reset` acts only on the PostgreSQL database (drop/recreate);
+     it does not touch the shared default data_dir / filestore
+   - v2: once data is isolated per `(worktree, db)` under `.data/`, decide whether
+     reset should also clear that database's filestore/data directory
 
 ## Future commands (to be designed)
  - `odoo where` [v1] — show exactly what the CLI inferred for the current command context
