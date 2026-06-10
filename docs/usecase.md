@@ -3,8 +3,8 @@
 This document describes concrete user flows for the v1 Odoo CLI. It complements
 `requirements.md`: requirements define the rules, while this file shows the
 commands, resulting workspace layout, and source of truth for common scenarios.
-Flows that depend on v2 commands (background servers, status/log, rpc, support
-and linked-worktree workflows) live in `usecase_v2.md`.
+Flows that depend on v2 commands (background servers, status/log, rpc,
+dump/restore support workflows) live in `usecase_v2.md`.
 
 The examples intentionally avoid duplicated state:
 
@@ -28,7 +28,7 @@ Odoo with demo data.
 Commands:
 
 ```bash
-uv tool install odoo-cli
+uv tool install odoo-cli-official
 odoo init                 # defaults to latest stable version (e.g. 19.0); empty db
 odoo module install crm   # install CRM (demo data on by default)
 odoo start
@@ -36,7 +36,7 @@ odoo start
 
 Alternative:
 ```bash
-curl http://odoo.com/get-started.sh (installs odoo-cli, then odoo init)
+curl https://www.odoo.com/install.sh | bash   # installs odoo-cli, then odoo init
 odoo module install crm
 odoo start
 ```
@@ -200,7 +200,7 @@ Expected workspace setup:
         documentation.git
     .venvs/
         19.0/
-        master/
+        saas-19.4/          <- master's detected version (from release.py)
     .run/
         19.0/
             odoo-19.0/
@@ -220,6 +220,8 @@ Source of truth:
 
 - `19.0/odoo` and `master/odoo` are separate git worktrees
 - each worktree's Odoo version is inferred from its own `odoo/odoo/release.py`
+- the `master` worktree's venv is keyed by the version its `release.py` reports
+  (e.g. `saas-19.4`), not by the worktree name; it changes as master rolls forward
 - because several worktrees exist, commands run outside a worktree must use
   `-w` / `--worktree`
 - default databases are derived from the targeted worktree: `odoo-19.0` and
@@ -280,9 +282,9 @@ worktrees should receive it.
 Commands:
 
 ```bash
-odoo config enable enterprise
-# choose whether to add it to all compatible, selected, or no existing worktrees
-# (or: bare `odoo config` walks the same choice interactively)
+odoo repo enable enterprise
+# by default adds enterprise to all compatible existing worktrees;
+# scope with flags (selected worktrees / future-only) — no prompts in v1
 
 odoo worktree create enterprise-feature 19.0
 cd ~/odoo/enterprise-feature
@@ -305,9 +307,66 @@ Expected workspace setup:
 
 Source of truth:
 
-- `odoo config enable enterprise` clones the bare repo into `.repositories/enterprise.git`
+- `odoo repo enable enterprise` clones the bare repo into `.repositories/enterprise.git`
 - enabled-ness is just that presence: the repository URL is its git remote, not a config value
 - enterprise is active for a worktree when `enterprise/` exists in that worktree
 - new worktrees include enterprise automatically because `enterprise.git` is now present
 - if the enterprise repository lacks a worktree's detected Odoo version, the CLI
   skips that worktree and reports a warning
+
+## 6. Customer addons with a linked worktree
+
+Goal: support needs a customer-specific addon repository on a standard Odoo
+version without duplicating the Odoo source tree.
+
+Commands:
+
+```bash
+odoo repo add customer-a-addons git@github.com:customer/customer-a-addons.git
+odoo repo add support-tools git@github.com:odoo/support-tools.git
+
+odoo worktree create customer-a 19.0 \
+  --linked-from 19.0 \
+  --addon customer-a-addons \
+  --addon support-tools
+
+cd ~/odoo/customer-a
+odoo start -d customer-a       # foreground; Ctrl-C to stop
+```
+
+Expected workspace setup:
+
+```text
+~/odoo/
+    .repositories/
+        odoo.git
+        documentation.git
+        customer-a-addons.git
+        support-tools.git
+    .run/
+        customer-a/
+            customer-a/
+                ports
+    19.0/
+        odoo/
+        documentation/
+    customer-a/
+        odoo -> ../19.0/odoo
+        documentation -> ../19.0/documentation
+        customer-a-addons/
+        support-tools/
+```
+
+No config file changes — repos and links are all on disk.
+
+Source of truth:
+
+- `odoo repo add` clones each addon repo into `.repositories/*.git`; that
+  presence is the registry (URLs are the bare repos' git remotes)
+- the symlinked `customer-a/odoo -> ../19.0/odoo` marks `customer-a` as a linked
+  worktree and identifies `19.0` as its source
+- addon repositories are real git worktrees at the linked worktree root; active
+  custom addons are discovered from `customer-a/`, not stored anywhere
+- `--addon` is a creation-time checkout action only
+- commands run from inside `customer-a/` target the linked worktree even though
+  the symlinked paths physically point into `19.0/` (logical `$PWD` resolution)

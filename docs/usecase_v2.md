@@ -1,10 +1,11 @@
 # Odoo CLI use cases (v2)
 
 Flows that depend on v2 commands. v1 flows live in `usecase.md`; v1 is scoped to
-the foreground dev loop (see `requirements_v2.md` for the full list of deferred
-commands). These use background servers, `status`/`log`, `rpc`, and the support /
-linked-worktree workflows. With the v2 server lifecycle, `.run/{worktree}/{db}/`
-gains the `pid`, `log`, `socket`, and `args` files alongside `ports`.
+the foreground dev loop plus linked worktrees (see `requirements_v2.md` for the
+full list of deferred commands). These use background servers, `status`/`log`,
+and `rpc`. With the v2 server lifecycle, `.run/{worktree}/{db}/` gains the
+`pid`, `log`, `socket`, and `args` files alongside `ports`. The linked-worktree
+support flow itself is v1 — see `usecase.md` §6.
 
 ## 1. Support workflow: many customer databases, standard Odoo source
 
@@ -62,75 +63,7 @@ Source of truth:
 - nothing is stored per database; each database's `.run`/`.data` directories and
   its installed modules are the only state
 
-## 2. Support workflow: customer addons with linked worktree
-
-Goal: support needs a customer-specific addon repository, but should still avoid
-duplicating standard Odoo source directories.
-
-Commands:
-
-```bash
-odoo worktree create 19.0
-
-odoo repo add customer-a-addons git@github.com:customer/customer-a-addons.git
-odoo repo add support-tools git@github.com:odoo/support-tools.git
-
-odoo worktree create customer-a 19.0 \
-  --linked-from 19.0 \
-  --addon customer-a-addons \
-  --addon support-tools
-
-cd ~/odoo/customer-a
-odoo start -d customer-a
-```
-
-Expected workspace setup:
-
-```text
-~/odoo/
-    .repositories/
-        odoo.git
-        documentation.git
-        customer-a-addons.git
-        support-tools.git
-    .run/
-        customer-a/
-            customer-a/
-                pid
-                log
-                ports
-                socket
-                args
-    .data/
-        customer-a/
-            customer-a/
-                filestore/
-    19.0/
-        odoo/
-        documentation/
-    customer-a/
-        odoo -> ../19.0/odoo
-        documentation -> ../19.0/documentation
-        enterprise -> ../19.0/enterprise      <- if enterprise is enabled
-        customer-a-addons/
-        support-tools/
-```
-
-No config file changes — repos and links are all on disk.
-
-Source of truth:
-
-- `odoo repo add` clones each addon repo into `.repositories/*.git`; that presence
-  is the registry (URLs are the bare repos' git remotes)
-- the symlinked `customer-a/odoo -> ../19.0/odoo` marks `customer-a` as a linked
-  worktree and identifies `19.0` as its source (the former `linked_from`)
-- standard repositories are symlinks to the source worktree
-- optional standard repositories such as `enterprise` are symlinked when present
-- addon repositories are real git worktrees at the linked worktree root
-- active custom addons are discovered from `customer-a/`, not stored anywhere
-- `--addon` is a creation-time checkout action only
-
-## 3. Agent-friendly local validation
+## 2. Agent-friendly local validation
 
 Goal: an agent starts Odoo, finds the URL and credentials, uses documentation,
 executes a machine-readable command, and shuts the server down.
@@ -180,7 +113,7 @@ These flows are important, but need more design before they become normative:
 
 - dump, restore, and neutralize for support workflows
 - adding or removing addon repositories from an existing linked worktree
-- Odoo.sh/cloud backend command sequences
-- MCP frontend workflows
+- Odoo.sh/cloud backend command sequences (v3, see `requirements_v3.md`)
+- MCP frontend workflows (v3, see `requirements_v3.md`)
 - upgrade workflows
 - module scaffolding

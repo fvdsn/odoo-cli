@@ -76,8 +76,7 @@ odoo_cli/
     cli/                 click frontend and terminal rendering
     commands/            thin command adapters
     core/                frontend-independent domain logic
-    backends/            local/cloud backend implementations
-    util/                small stdlib helpers
+    util/                small stdlib helpers (incl. injectable process runner)
     mcp/                 future MCP frontend
     extensions/          future advanced workflows
 ```
@@ -90,11 +89,7 @@ cli.main -> commands
 commands -> cli.context / cli.output / cli.prompts
 commands -> core services
 
-core services -> backend interface
 core services -> util
-
-backends.local -> backend interface
-backends.local -> util
 
 mcp -> core services
 extensions -> core services
@@ -108,8 +103,8 @@ Rules:
 - `core` does not call `sys.exit`
 - `commands` parse CLI arguments and call core services
 - `cli` renders messages, prompts, and tables
-- `backends` implement filesystem/process/database details behind core-facing interfaces
-- `backends` do not import CLI modules
+- subprocess execution (git, psql, venv tooling, odoo-bin) goes through an
+  injectable runner in `util.process` so tests can fake it
 - future MCP tools call the same core services as CLI commands
 
 ## Proposed package layout
@@ -128,9 +123,9 @@ odoo_cli/
     commands/
         __init__.py
         init.py
-        config.py            # bare wizard + get/set/list/enable
+        config.py            # get/set/list (wizard is v2)
         module.py            # odoo module install
-        repo.py
+        repo.py              # add / enable
         worktree.py
         start.py
         db.py
@@ -166,16 +161,10 @@ odoo_cli/
         info.py
         status.py
 
-    backends/
-        __init__.py
-        base.py
-        local.py
-
     util/
         __init__.py
-        process.py
+        process.py           # injectable subprocess runner (test seam)
         fs.py
-        toml.py
         git.py
         net.py
 
@@ -254,7 +243,7 @@ Rules:
 - a repository is "enabled" iff `.repositories/{name}.git` exists; `odoo` and
   `documentation` are cloned by `odoo init`
 - optional builtins (`enterprise`, `themes`, `upgrade`) exist only once enabled
-  via `odoo config enable`
+  via `odoo repo enable`
 - customer addon repositories are added by `odoo repo add`
 - there is no stored enabled/disabled flag or URL; both come from disk
 
@@ -277,8 +266,9 @@ Derived facts:
 - active standard repos from directories/symlinks present in the worktree
 - active custom addons from filesystem discovery
 
-The filesystem is the authoritative list of worktrees: every top-level directory
-other than the dot-directories is one. No config entry is needed for any worktree.
+The filesystem is the authoritative list of worktrees: a worktree is a top-level
+directory containing an `odoo/` entry (directory or symlink); other top-level
+directories are ignored. No config entry is needed for any worktree.
 
 ### `Target`
 
@@ -373,32 +363,35 @@ Responsibilities:
 
 ### `ConfigService`
 
-Backs the `odoo config` command (bare wizard + `get`/`set`/`list`/`enable`).
+Backs the `odoo config` command (`get`/`set`/`list`; the interactive wizard is v2).
 
 Responsibilities:
 
 - read/write the shared `~/.config/odoo/odoo.conf` via `configparser`
 - get/set/list individual keys for the scriptable subcommands
 - redact secrets (`db_password`) for output, with an explicit reveal path
-- drive the interactive wizard (postgres connection, dev mode, demo data, ...)
-- enable optional builtin repositories (delegates the clone to `RepositoryService`)
+- (v2) drive the interactive wizard (postgres connection, dev mode, demo data,
+  ...), delegating repository enablement to `RepositoryService`
 
 It should expose explicit methods rather than generic nested mutation.
 
 Examples:
 
 - `get(key)` / `set(key, value)` / `list(reveal=False)`
-- `enable_repository(name, url=None, scope=...)`  # side-effecting: clone + optional worktree checkout
 
 There are no per-worktree override methods in v1. Repository URLs are never
-written here; enabling a repo is a clone, and its URL is the git remote.
+written here; enabling a repo is a clone (`odoo repo enable`, backed by
+`RepositoryService`), and its URL is the git remote.
 
 ### `RepositoryService`
 
 Responsibilities:
 
 - register repositories
-- clone/fetch bare repositories under `.repositories`
+- clone/fetch bare repositories under `.repositories` (blobless by default:
+  `--filter=blob:none`; `--full` opts into a complete clone)
+- enable builtin optional repositories (`odoo repo enable`): clone plus checkout
+  into compatible existing worktrees
 - check whether a branch/version exists
 - create git worktrees from registered bare repositories
 - report dirty/ahead status
@@ -438,6 +431,9 @@ Responsibilities:
 
 - resolve target worktree
 - resolve database name
+- resolve the cwd-based worktree from the logical path (`$PWD` validated against
+  `getcwd()`) so paths inside a linked worktree's symlinks target the linked
+  worktree, not its source
 - produce explicit errors when ambiguous
 - return a `Target`
 
@@ -464,6 +460,12 @@ Responsibilities:
 
 - detect Odoo Python requirement from `odoo/odoo/release.py`
 - resolve shared venv path `.venvs/{version}` for the detected version
+- create venvs with uv when it is on PATH, falling back to `python3 -m venv`
+  + pip (the CLI itself never requires uv)
+- normalize the version string for the venv directory name (`~` → `-`)
+- ensure the resolved venv exists, creating it on demand, for any command that
+  runs odoo-bin (a pull can change the detected version, e.g. master rolling
+  forward)
 - create/rebuild venv
 - install Odoo requirements
 
@@ -503,8 +505,9 @@ Responsibilities:
 - build all `odoo-bin` command specifications
 - expose high-level builders for server start, module install, module update,
   tests, shell, and other direct Odoo invocations
-- rely on odoo-bin auto-loading the shared `~/.config/odoo/odoo.conf`; do NOT
-  pass `-c` and do NOT duplicate `odoo.conf` values into argv
+- always pass `-c ~/.config/odoo/odoo.conf` explicitly so behavior never depends
+  on odoo-bin's rcfile resolution (`~/.odoorc`, `ODOO_RC`); do NOT duplicate
+  other `odoo.conf` values into argv
 - only add the per-instance args that must override the conf: `--addons-path`,
   `-d {database}`, and the allocated `--http-port`/`--gevent-port`
 - include deterministic addons paths from `AddonsPathResolver`
@@ -517,7 +520,7 @@ Responsibilities:
 - produce sanitized/restartable argv for `.run/{worktree}/{db}/args`
 
 This service is the only owner of `odoo-bin` CLI details. Other services should
-ask it for an `OdooBinCommand` and then execute that command through the backend.
+ask it for an `OdooBinCommand` and then execute it through the process runner.
 
 Version-dependent behavior should be represented explicitly, for example with a
 small capability table keyed by detected Odoo version. Examples include renamed
@@ -529,7 +532,13 @@ module install/update invocation details.
 Responsibilities:
 
 - request server-start commands from `OdooBinService`
-- allocate runtime ports per `(worktree, database)`
+- allocate runtime ports per `(worktree, database)`: reuse the `ports` file
+  value; if that port is taken, refuse to start with a diagnostic (Odoo-probe
+  vs foreign process) unless `--new-port` requests an explicit reallocation
+- first allocation picks the smallest free port ≥ base, skipping any port
+  reserved by an existing worktree's `ports` file (http and gevent share one
+  reservation pool); availability is verified by binding, and the `ports` file
+  is written before the final bind check so concurrent starts see each other
 - start foreground/background server
 - stop server
 - restart using `.run/{worktree}/{db}/args`
@@ -577,36 +586,20 @@ Responsibilities:
 - execute JSON RPC/path RPC
 - return JSON-compatible data
 
-## Backend interfaces
+## Backend seam (deferred)
 
-The backend layer keeps local filesystem/process behavior separate from future
-cloud behavior.
+The local/cloud `Backend` interface is deliberately not defined in v1: an
+interface extracted from a single implementation is usually the wrong one. It
+will be defined in v3, when a second (cloud) implementation exists to shape it
+(see `requirements_v3.md`).
 
-### `Backend`
+What v1 keeps is a narrow test seam: subprocess execution (git, psql, venv
+tooling, odoo-bin) goes through an injectable process runner in `util.process`.
+Core services otherwise call `util` helpers directly.
 
-Defines operations that may differ between local and cloud environments:
-
-- repository operations
-- worktree operations
-- server lifecycle
-- database lifecycle
-- logs
-- generic command execution
-- `OdooBinCommand` execution
-
-### `LocalBackend`
-
-Implements the current local workflow:
-
-- filesystem under `~/odoo`
-- git subprocesses
-- local PostgreSQL
-- local venvs
-- local `odoo-bin`
-
-Future cloud backends can implement the same core concepts without changing the
-CLI grammar. They may execute an `OdooBinCommand` locally, translate it into a
-remote job, or reject unsupported capabilities through typed errors.
+Future cloud backends can still implement the same core concepts without
+changing the CLI grammar — for example by translating an `OdooBinCommand` into
+a remote job, or rejecting unsupported capabilities through typed errors.
 
 ## CLI command shape
 
@@ -646,6 +639,7 @@ Example error classes:
 - `WorktreeNotFound`
 - `RepositoryNotFound`
 - `VersionNotFound`
+- `UnsupportedOdooVersion`
 - `PortUnavailable`
 - `PostgresError`
 - `ServerNotRunning`
@@ -682,7 +676,7 @@ Test layout:
 
 ```text
 tests/
-    unit/           core services with fake backends and temp workspaces
+    unit/           core services with fake process runners and temp workspaces
     cli/            click command parsing, output, and error handling
     integration/    local backend behavior using local tools, no network
     e2e/            gated real-Odoo workflows
@@ -704,19 +698,19 @@ to PostgreSQL, fetch remote repositories, or depend on the user's real
 Use:
 
 - `tempfile.TemporaryDirectory` for isolated workspaces
-- fake backend implementations for process, git, and database operations
+- a fake process runner for git, postgres, and odoo-bin subprocesses
 - small fixture builders for `Workspace`, `Worktree`, `Target`, and `OdooConf`
-- `unittest.mock` only at process/backends boundaries
+- `unittest.mock` only at the process-runner boundary
 
 High-value unit coverage:
 
 - `WorkspaceResolver`: marker detection (`.repositories/odoo.git`), invalid
   workspace errors, workspace creation paths
-- `ConfigService`: `odoo.conf` (ini) get/set/list, redaction, and `enable`
-  side effects
-- `TargetResolver`: explicit flag, cwd, only-worktree, and ambiguity errors
-- `RepositoryService`: repository registry validation and planned checkout
-  operations
+- `ConfigService`: `odoo.conf` (ini) get/set/list and redaction
+- `TargetResolver`: explicit flag, cwd, only-worktree, and ambiguity errors,
+  including logical `$PWD` resolution inside symlinked (linked) worktrees
+- `RepositoryService`: repository registry validation, planned checkout
+  operations, and `repo enable` side effects
 - `WorktreeService`: full and linked worktree layout decisions
 - `AddonsPathResolver`: deterministic order and ignored directories
 - `VenvService`: venv path/profile resolution without installing packages
@@ -760,7 +754,7 @@ They may use:
 - optional PostgreSQL checks when an environment flag is present
 
 They should still avoid network access. Remote repository behavior can be tested
-with local `file://` repositories or fake backend responses.
+with local `file://` repositories or fake process-runner responses.
 
 ### Real Odoo end-to-end tests
 
@@ -792,12 +786,14 @@ The e2e suite should cover a small number of use-case flows from
 `usecase.md`, not every command permutation:
 
 - initialize a workspace for one Odoo version
-- start the server in the background
-- verify `status`, `info`, URL, ports, and log paths
+- start the server (foreground in v1) and wait until it listens on the
+  allocated port
+- verify `where`, URL, and ports
 - install a module with `odoo module install`, then reset the database and
   confirm the module is reinstalled (DB is the source of truth)
 - update a simple module
-- perform a minimal RPC login or health check when the server is running
+- create a linked worktree with an addon repository and confirm target
+  resolution and addons discovery from inside it
 - stop the server and confirm stale runtime state is handled
 
 E2E tests must use unique database names, clean up best-effort, and print enough
@@ -814,23 +810,27 @@ tests should grow with the implementation.
 2. Implement `core.errors`, `core.models`, and `cli.context`.
 3. Implement workspace resolution (marker `.repositories/odoo.git`) and the
    `OdooConf` reader/writer over `~/.config/odoo/odoo.conf`.
-4. Implement `TargetResolver`.
-5. Implement filesystem-derived repositories and full worktree services.
+4. Implement `TargetResolver` (logical `$PWD` cwd resolution, with
+   symlinked-worktree fixtures).
+5. Implement filesystem-derived repositories (blobless bare clones) and full
+   worktree creation.
 6. Implement addons path resolution.
-7. Implement venv resolution.
-8. Implement `OdooBinService` and its version capability table.
-9. Implement port allocation and foreground `odoo start` (write `.run/.../ports`).
+7. Implement venv resolution and on-demand creation.
+8. Implement `OdooBinService` and its version capability table (supported
+   versions + master).
+9. Implement port allocation, foreground `odoo start` (write `.run/.../ports`),
+   and `odoo where`.
 10. Implement DB reset (read installed modules from DB), `odoo update`, and
     `odoo module install`.
 11. Implement `odoo test` and `odoo shell`.
-12. Implement `odoo config` (`get`/`set`/`list`/`enable`).
+12. Implement `odoo config` (`get`/`set`/`list`).
+13. Implement `odoo repo add`, `odoo repo enable`, and linked worktree creation.
 
-That completes the v1 surface (10 commands). The remaining steps are v2+:
+That completes the v1 surface (12 commands). The remaining steps are v2+:
 
-13. Add the server lifecycle (`stop`, `restart`, `--background`, `.run` pid/log/
-    socket/args), then `where`/`info`/`status`/`log`/`rpc`/`db shell`/`db query`/
+14. Add the server lifecycle (`stop`, `restart`, `--background`, `.run` pid/log/
+    socket/args), then `info`/`status`/`log`/`rpc`/`db shell`/`db query`/
     `doctor`/`pull`/`worktree list`/`worktree remove` and the `config` wizard.
-14. Add linked worktrees and `odoo repo add`.
 15. Prepare MCP/backend extension points after the local CLI is stable.
 
 ## Greenfield stance
@@ -853,7 +853,7 @@ The implementation target is:
 - Click for CLI wiring and prompts
 - stdlib output helpers
 - a single shared `odoo.conf` at `~/.config/odoo/odoo.conf` (Odoo's standard
-  auto-loaded location), written by `odoo init`
+  location), written by `odoo init` and always passed explicitly via `-c`
 - workspace marker is the presence of `.repositories/odoo.git`
 - per-instance values (addons path, db, ports) computed and passed as CLI args
   that override `odoo.conf`; v1 does not pass `--data-dir` (odoo-bin default)

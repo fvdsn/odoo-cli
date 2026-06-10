@@ -7,12 +7,25 @@
  - native packages with apt
  - venv with uv
 
+## Supported Odoo versions
+ - the CLI supports the Odoo versions Odoo itself currently supports, plus master
+   (today: 17.0, 18.0, 19.0, master) — a self-updating definition that tracks
+   Odoo's own support policy
+ - a version counts as supported only when it is covered by the odoo-bin
+   capability table and by the nightly e2e matrix
+ - older versions fail early with a typed `UnsupportedOdooVersion` error rather
+   than undefined behavior
+
 ## Primary installation path
- - `uv tool install odoo-cli` (recommended)
- - `apt install odoo-cli` (Debian/Ubuntu)
+ - `uv tool install odoo-cli-official` (recommended)
+   - the PyPI name `odoo-cli` is squatted by a third party; publish as
+     `odoo-cli-official` while pursuing a PEP 541 name transfer, then publish
+     under `odoo-cli` as well
+   - the installed executable is `odoo` regardless of the distribution name
+ - `apt install odoo-cli` (Debian/Ubuntu; the apt namespace is unaffected)
  - `curl https://www.odoo.com/install.sh | bash` (fallback)
     -> working setup no questions asked
-        -> advanced configuration wizard afterwards with `odoo config`
+        -> fine-tune afterwards with `odoo config set` (interactive wizard is v2)
     -> no more than 5min
 
 ## Available as a global `odoo` command
@@ -30,14 +43,14 @@
     .repositories/              <- bare git repos (shared object store)
         odoo.git                <- cloned by odoo init; its presence marks an initialized workspace
         documentation.git       <- cloned by odoo init
-        enterprise.git          <- added via odoo config enable
-        themes.git              <- added via odoo config enable
-        upgrade.git             <- added via odoo config enable
+        enterprise.git          <- added via odoo repo enable
+        themes.git              <- added via odoo repo enable
+        upgrade.git             <- added via odoo repo enable
         customer-a-addons.git   <- added via odoo repo add
         support-tools.git       <- added via odoo repo add
-    .venvs/                     <- one per odoo version
-        master/
+    .venvs/                     <- one per odoo version (normalized from release.py)
         19.0/
+        saas-19.4/              <- e.g. a master checkout; `~` normalized to `-`
     .run/                       <- ephemeral runtime state, per server instance
         master/                 <- worktree name
             odoo-master/        <- default db
@@ -92,6 +105,18 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
  - version is determined by reading `odoo/odoo/release.py` in the worktree
  - the worktree version is never stored; the checked-out source is the source of truth
  - the resolved venv for a worktree is `.venvs/{version}`; there is no per-worktree venv override in v1
+ - the venv directory name is the normalized detected version string (`~` replaced
+   by `-`, e.g. `saas~19.4` → `saas-19.4`); there is no `master` venv — a master
+   worktree uses whatever version its `release.py` reports
+ - every command that runs odoo-bin ensures the resolved venv exists and creates
+   it on demand; a pull can change the detected version (e.g. master rolling
+   forward), which silently retargets the venv
+ - venvs orphaned by rolled-forward versions are left in place; cleanup
+   (`odoo venv prune` / `odoo doctor`) is a v2 concern
+ - venvs are created with uv when it is on PATH, falling back to
+   `python3 -m venv` + pip; the CLI itself never requires uv
+ - running without a venv at all (global apt python packages) is a v2 topic —
+   see `requirements_v2.md`
  - `odoo venv` rebuilds the resolved venv for the current worktree when needed
 
 ## Everything odoo inside ~/odoo, nothing outside
@@ -115,9 +140,15 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
    - assigned ports → `.run/{worktree}/{db}/ports`
  - the only genuine configuration is the Odoo server configuration itself, which
    is stored in a single `odoo.conf` using Odoo's own format
- - `odoo.conf` lives at Odoo's standard auto-loaded location
-   `~/.config/odoo/odoo.conf`; odoo-bin loads it automatically, so the CLI does
-   not need to pass `-c path/to/odoo.conf`
+ - `odoo.conf` lives at Odoo's standard location `~/.config/odoo/odoo.conf`; the
+   CLI always passes it explicitly (`-c ~/.config/odoo/odoo.conf`) when invoking
+   odoo-bin, so CLI behavior never depends on odoo-bin's rcfile resolution
+   (`~/.odoorc`, `ODOO_RC`, distro defaults)
+ - the standard location is kept (rather than a workspace-local file) so manual
+   `odoo-bin` runs resolve the same configuration: the CLI must stay a thin
+   wrapper over odoo-bin, and manual runs should behave the same as CLI runs
+ - `odoo init` warns when `~/.odoorc` exists or `ODOO_RC` is set, because manual
+   odoo-bin runs would resolve those instead of the shared `odoo.conf`
  - `odoo init` creates this file with good defaults (postgres connection, dev
    mode, demo data, log level)
  - consequence: this file is user-global, not workspace-scoped — it is shared by
@@ -134,9 +165,8 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
    - `data_dir` is NOT passed in v1 — odoo-bin uses its default location, shared
      by all dbs/servers; per-instance `--data-dir` → `.data/{worktree}/{db}` is v2
  - resulting override chain: `odoo.conf` (base) → environment variables → CLI args
- - because the running configuration is `odoo.conf` plus computed args, the v2
-   `odoo info` / `odoo where` are the canonical way to see the fully resolved
-   config (v1 has no dedicated resolved-config view)
+ - because the running configuration is `odoo.conf` plus computed args,
+   `odoo where` is the canonical way to see the fully resolved config
 
 ## Use click for python cli arg parsing framework
  - available in debian `python3-click`
@@ -150,6 +180,8 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
  - implementation should separate core operations from frontends
  - the CLI is the first frontend, but the same core should be usable by future MCP/Odoo.sh/cloud integrations
  - v1 implements the local development backend; cloud backends can be added later without changing the command model
+ - the formal backend interface is deferred to v3; v1 keeps only an injectable
+   process-runner seam (see `architecture.md`)
  - dependency direction: frontends depend on core, backends implement core interfaces; core does not depend on frontend code
  - advanced workflows can be provided as extensions that expose CLI commands and/or MCP tools while reusing the same core and backend APIs
  - extensions should not redefine workspace resolution, target resolution, addons path resolution, venv rules, or server lifecycle
@@ -249,12 +281,31 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
 
 ## Port management
  - default: http=8069, webrtc=8072
- - if the default port is taken, pick the next available
+ - the `ports` file exists to keep port selection stable across restarts of the
+   same `(worktree, db)`; it is created on first start and only rewritten on an
+   explicit `odoo start --new-port` — ports are never reassigned silently
+ - if the stored port is taken at start, refuse to start with a diagnostic:
+   probe the port — if it answers like an Odoo server, report that a server is
+   (probably) already running for this instance and at which URL; otherwise
+   name the occupying process and suggest `--new-port`
+ - `odoo start --new-port` explicitly reallocates, overwrites the `ports` file,
+   and starts
+ - allocation picks the smallest available port ≥ the base port that is neither
+   in use nor reserved by any existing `ports` file — smallest-first reclaims
+   ports freed by removed worktrees instead of growing forever
+ - http and gevent reservations share a single pool: an instance's `ports` file
+   reserves both its ports, and allocation for either kind skips any port
+   reserved or in use for any purpose — the defaults are only 3 apart, so the
+   http range must never walk onto a gevent port
+ - `ports` files under `.run/` whose worktree no longer exists on disk do not
+   count as reservations (presence of the worktree is the truth)
+ - availability is verified by binding, never by trusting the file; the `ports`
+   file is written before the final bind check so concurrent `odoo start`
+   invocations see each other's reservations
  - assigned ports stored in `.run/{worktree}/{db}/` so other commands can discover them
  - the default starting port can be changed in `odoo.conf` (`http_port` / `gevent_port`);
-   the CLI still auto-allocates from there per `(worktree, db)` and passes the chosen
-   port as a CLI arg, so concurrent instances never collide
- - same mechanism for both http and webrtc ports
+   the CLI still auto-allocates from there per `(worktree, db)` and passes the
+   chosen ports as CLI args
 
 ## Persistent data management
  - v1: persistent Odoo data lives in odoo-bin's default `data_dir`; the CLI does
@@ -280,9 +331,11 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
    the source worktree (the former `linked_from`). Nothing is stored in config.
  - linked worktrees are useful when a user needs several isolated custom-addon contexts on the same standard Odoo version without duplicating the Odoo source tree
  - commands that mutate shared source repositories should report when the current worktree is linked and make clear that the source is shared with another worktree
- - the filesystem is the authoritative list of worktrees: each top-level directory
-   in the workspace (other than `.repositories`, `.venvs`, `.run`, `.data`, `.claude`)
-   is a worktree; its kind (full vs linked) and version are derived from its contents
+ - the filesystem is the authoritative list of worktrees: a worktree is a top-level
+   directory in the workspace that contains an `odoo/` entry (directory or symlink);
+   its kind (full vs linked) and version are derived from its contents
+ - other top-level directories (e.g. a `dumps/` folder the user created) are
+   ignored; v2 `odoo doctor` flags them
  - one worktree can run multiple servers, each with a different database
  - the worktree directory name is the worktree id
  - worktree names may contain only ASCII letters, digits, `_`, `-`, and `.`
@@ -295,6 +348,9 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
 
 ## Target resolution order
  - worktree: cwd if inside a worktree → only worktree if there's exactly one → error
+ - cwd detection uses the logical path (`$PWD`, validated against `getcwd()`):
+   inside a linked worktree's symlinked `odoo/`, the physical path points at the
+   source worktree, but the command must target the linked worktree
  - database: explicit `--db` → default `odoo-{worktree}`
  - if worktree resolution fails because multiple worktrees exist, print an explicit error:
    - explain that no default worktree is configured
@@ -312,17 +368,19 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
 ## Phases
 
 v1 is deliberately scoped down for internal testing: the minimal edit → run →
-test loop, foreground server only, no process lifecycle management.
+test loop, foreground server only, no process lifecycle management. Linked
+worktrees and `odoo repo add` are in v1 because support users are among the v1
+testers and linked worktrees are the hardest resolution case to validate early.
 
-- **v1** (10 commands): init, config (`get`/`set`/`list`/`enable`, no wizard),
-  worktree create, venv, start (foreground only), module install, update, test,
-  db reset, shell
+- **v1** (12 commands): init, config (`get`/`set`/`list`, no wizard),
+  repo (add/enable), worktree create (full and linked), venv, start (foreground
+  only), where, module install, update, test, db reset, shell
 - **v2**: everything deferred from v1 — server lifecycle (stop, restart,
-  `start --background`), the `config` wizard, `venv --apt`, where, info, status,
+  `start --background`), the `config` wizard, `venv --apt`, info, status,
   doctor, pull, log, rpc, db shell, db query, worktree list/remove — plus support
-  workflows: linked worktrees, `odoo repo add`, dump/restore/neutralize, checkout,
-  scaffold
-- **v3**: Platform — MCP frontend, cloud backend, extensions
+  workflows: dump/restore/neutralize, checkout, scaffold
+- **v3**: Platform — MCP frontend, cloud backend, extensions — see
+  `requirements_v3.md`
 
 In v1, `.run/{worktree}/{db}/` holds only the `ports` file (the foreground
 server logs to the terminal); pid/socket/args and background logs arrive with the
@@ -334,7 +392,15 @@ v2 server lifecycle.
  - bootstrap the workspace: clone repos, create initial worktree, set up venv
  - minimal, good defaults, fully unattended — no questions asked
  - `odoo init 19.0` — create initial worktree `19.0` on version `19.0`
- - clones odoo.git and documentation.git by default (enterprise, themes, upgrade via `odoo config enable`)
+ - with no version argument, defaults to the latest stable version: the highest
+   `N.0` branch present in the freshly cloned odoo.git (no hardcoded version
+   list, no extra network round-trip)
+ - clones odoo.git and documentation.git by default (enterprise, themes, upgrade via `odoo repo enable`)
+ - clones are bare and blobless (`git clone --bare --filter=blob:none`): full
+   commit/tree history so `git log` and `git blame` work, blobs fetched on demand
+   by checkouts; `--full` opts into complete clones
+ - consequence of blobless: first-time `git blame` and checkouts of new refs need
+   network access
  - installs no module; the initial database is created empty (use `odoo module install` afterwards)
  - writes the default `odoo.conf` at `~/.config/odoo/odoo.conf`
  - demo data enabled by default (override with `--no-demo-data` or `without_demo` in `odoo.conf`)
@@ -342,29 +408,33 @@ v2 server lifecycle.
  - postgres: check if installed, try to connect with default user
    - if not installed: print install instructions for the platform and exit
    - NOTE: consider auto-installing postgres (apt/brew) if Anthony requires it
-   - if installed but connection fails: tell user to run `odoo config`
+   - if installed but connection fails: tell user to fix the `db_*` keys with
+     `odoo config set`
 
 ### `odoo config` [v1]
 Non-interactive workspace configuration: a thin, scriptable front over the shared
-`odoo.conf` plus a verb to enable optional repos. No interactive wizard in v1
-(the wizard is a v2 addition); `odoo init` writes good defaults and the user edits
-from there.
+`odoo.conf`. No interactive wizard in v1 (the wizard is a v2 addition); `odoo init`
+writes good defaults and the user edits from there.
 
 Subcommands:
  - `odoo config list [--json] [--reveal]` — print resolved config (`odoo.conf`
    values plus which optional repos are enabled), secrets redacted unless `--reveal`
  - `odoo config get $KEY` — print one value
  - `odoo config set $KEY $VALUE` — set one `odoo.conf` value; pure edit, no side effects
- - `odoo config enable $REPO [$URL]` — enable a built-in optional repo
-   (`enterprise`, `themes`, `upgrade`); side-effecting
 
 Keys:
  - keys are `odoo.conf`'s own flat ini keys, e.g. `db_host`, `db_port`,
    `db_user`, `db_password`, `dev_mode`, `without_demo`, `log_level`
  - there are no dotted paths and no `repositories.*` keys; enabling repos is a
-   verb (`enable`), not a key, because it clones and touches worktrees
+   `repo` verb (`odoo repo enable`), not a config key, because it clones and
+   touches worktrees
 
-`enable` behavior:
+The interactive `odoo config` wizard (bare command that walks postgres
+connection, enterprise, dev mode, etc.) is deferred to v2 — see
+`requirements_v2.md`; for enterprise it delegates to `odoo repo enable`.
+
+### `odoo repo enable $REPO [$URL]` [v1]
+ - enable a built-in optional repo (`enterprise`, `themes`, `upgrade`); side-effecting
  - clones/fetches the repo into `.repositories/` (e.g. `.repositories/enterprise.git`)
  - newly enabled optional repos are automatically available to future worktrees
  - adds it to existing compatible worktrees (with a flag to scope to selected /
@@ -375,10 +445,7 @@ Keys:
    - supports local paths for users who already have the repo elsewhere
  - no `disable` verb in v1 (removing a cloned repo is destructive; punt)
 
-The interactive `odoo config` wizard (bare command that walks postgres
-connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_v2.md`.
-
-### `odoo repo add` [v2]
+### `odoo repo add` [v1]
  - register and clone/fetch an additional git repository into `.repositories/`
  - `odoo repo add customer-a-addons git@github.com:customer/customer-a-addons.git`
  - `odoo repo add support-tools git@github.com:odoo/support-tools.git`
@@ -399,7 +466,7 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_
  - if an optional repository does not have the requested version, skip that repository and report a warning
  - sets up venv if needed (reuses existing .venvs/{version} if available)
 
-### `odoo worktree create --linked-from` [v2]
+### `odoo worktree create --linked-from` [v1]
  - `odoo worktree create customer-a 19.0 --linked-from 19.0 --addon customer-a-addons --addon support-tools`
  - creates a linked worktree for custom addon work on an existing Odoo source tree
  - `--linked-from $WORKTREE` — `$WORKTREE` must already exist
@@ -434,11 +501,21 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_
  - at startup, if no non-base module is installed, prints a hint pointing to `odoo module install`
  - `odoo start -d customer-a` — start with a specific database
  - dev mode (auto-reload) enabled by default, override with `--prod` or `dev_mode` in `odoo.conf`
+ - ensures the resolved venv exists before starting, creating it on demand
+   (see "Venv strategy"; the same rule applies to every command that runs odoo-bin)
  - allocates a free port and writes it to `.run/{worktree}/{db}/ports`; the server
    logs to the terminal
+ - if the stored port is already taken, refuses to start with a diagnostic
+   (see "Port management"); `--new-port` explicitly reallocates
  - stop with Ctrl-C — there is no `odoo stop`/`odoo restart` in v1
  - background mode (`--background`), `odoo stop`, and `odoo restart` (with
    `.run/.../args`) are deferred to v2 — see `requirements_v2.md`
+
+### `odoo where` [v1]
+ - show exactly what the CLI inferred for the current command context
+ - workspace root, worktree, database, venv, addons paths, resolved `odoo.conf` path
+ - sanitized `odoo-bin` command args for debugging and copy/paste
+ - `--json` for machine-readable output
 
 ### `odoo info` [v2]
  - overview of the current setup: server port, credentials, branch statuses, etc.
@@ -453,6 +530,8 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_
 
 ### `odoo test $MODULE [-t $TAG]` [v1]
  - creates or reuses a test db and runs the tests
+ - the test db is named `{database}-test` (default: `odoo-{worktree}-test`);
+   derived by convention, never stored
  - only outputs final test results by default
  - `$MODULE`: module name, `installed` (modules installed in the database), or `all` (every addon)
  - `-t test_foo` resolves to the correct odoo test tag format automatically
@@ -504,9 +583,6 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_
      reset should also clear that database's filestore/data directory
 
 ## Future commands (to be designed)
- - `odoo where` [v2] — show exactly what the CLI inferred for the current command context
-   - workspace root, worktree, database, venv, addons paths, data dir, log file
-   - sanitized `odoo-bin` command args for debugging and copy/paste
  - `odoo doctor` [v2] — diagnose broken or incomplete setups
    - should be designed to provide genuinely helpful, actionable diagnostics
    - avoid being only a shallow checklist of installed tools
@@ -521,5 +597,6 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_
    - distinguish switching a worktree version from creating/using feature branches
    - define behavior when a branch exists in some repos but not others
  - `odoo scaffold` [v2] — generate a new module skeleton
- - MCP frontend [v3] — expose CLI operations as MCP tools for AI agents
- - Cloud backend [v3] — Odoo.sh / managed workspace support
+
+The v3 platform phase (MCP frontend, cloud backend, extensions) is tracked in
+`requirements_v3.md`.

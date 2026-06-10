@@ -16,10 +16,10 @@ and will be designed/promoted later.
    password unless explicitly requested
 
 ## Deferred from v1 (internal-testing scope reduction)
-v1 was scoped to 11 commands for internal testing (init, config, worktree create,
-venv, start, module install, update, test, db reset, shell, where). The following
-were specced as v1 but pushed to v2; they keep a `[v2]` tag inline in
-`requirements.md`:
+v1 was scoped to 12 commands for internal testing (init, config, repo —
+add/enable, worktree create — full and linked, venv, start, where, module
+install, update, test, db reset, shell). The following were specced as v1 but pushed to v2; they
+keep a `[v2]` tag inline in `requirements.md`:
 
  - **Server lifecycle** — `odoo stop`, `odoo restart`, and `odoo start --background`.
    v1 is foreground-only: `odoo start` runs in the terminal, Ctrl-C to stop, and
@@ -31,10 +31,13 @@ were specced as v1 but pushed to v2; they keep a `[v2]` tag inline in
    per database name, but sessions and the rest of the data_dir are shared). v2
    also decides whether `db reset` clears that database's filestore.
  - **`odoo config` wizard** — the bare interactive `odoo config` (postgres
-   connection, enterprise, dev mode, ...). v1 keeps only `get`/`set`/`list`/`enable`.
- - **`odoo venv --apt`** — system-wide apt install path (v1 keeps plain `odoo venv`).
- - **`odoo where`**, **`odoo info`**, and **`odoo status`** — introspection /
-   resolved-context views. v1 ships no dedicated introspection command.
+   connection, enterprise, dev mode, ...). v1 keeps only `get`/`set`/`list`.
+   For enterprise the wizard delegates to `odoo repo enable`.
+ - **`odoo venv --apt` / no-venv mode** — running Odoo against system-wide
+   python packages installed with apt, possibly without any venv at all
+   (v1 always creates a venv, with uv or `python3 -m venv` + pip).
+ - **`odoo info`** and **`odoo status`** — overview / status views (`odoo where`,
+   the resolved-context view, stayed in v1).
  - **`odoo log`** — log viewer with `--follow`/`--date`/`--search` (needs the v2
    `.run/.../log` file; v1 logs to the terminal).
  - **`odoo rpc`** — path-based RPC for agents.
@@ -45,8 +48,14 @@ were specced as v1 but pushed to v2; they keep a `[v2]` tag inline in
 
 ## Already-identified v2 scope (support workflows)
 These carry a `[v2]` tag in `requirements.md` and will be fleshed out here:
- - linked worktrees (`odoo worktree create --linked-from`)
- - `odoo repo add` — register/clone additional addon repositories
  - `odoo dump` / `restore` / `neutralize` — database lifecycle for support
  - `odoo checkout` — branch/version switching in a worktree-first model
  - `odoo scaffold` — module skeleton generation
+
+(Linked worktrees and `odoo repo add` were promoted to v1 so support users can
+validate them early.)
+
+## Parked ideas
+ - offload `odoo.conf` resolution to odoo-bin itself (an odoo-bin command that
+   prints the resolved config path/contents), instead of the CLI always passing
+   `-c ~/.config/odoo/odoo.conf`; revisit if/when odoo-bin grows such a command
