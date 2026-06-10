@@ -178,6 +178,51 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
  - because the running configuration is `odoo.conf` plus computed args,
    `odoo where` is the canonical way to see the fully resolved config
 
+## Decision record: why odoo.conf, and why at the standard location
+
+This was the most debated decision in the design; the rationale is recorded so
+the rules above are not mistaken for arbitrary choices.
+
+**The original draft** had a `workspace.toml` at the workspace root replacing
+`odoo.conf` entirely: the CLI would own all configuration and pass everything
+to odoo-bin as CLI args, bypassing `odoo.conf`.
+
+**The CTO rejected it**: CLI commands should be thin wrappers over odoo-bin, so
+that people who use odoo-bin directly get the same behavior. Hence `odoo.conf`
+came back, in Odoo's own format, at Odoo's standard location.
+
+**Why that is right** (beyond the stated reason): the CLI must not invent a
+second configuration language for Odoo. Owning config in a CLI format means
+enumerating, translating, and documenting every Odoo setting the CLI exposes,
+and chasing that mapping across Odoo versions forever. Using `odoo.conf`
+verbatim makes `odoo config set` a dumb ini editor with zero translation layer.
+It also preserves the escape hatch that adoption depends on: stop using the CLI
+tomorrow and nothing breaks, and when something misbehaves, dropping down to
+bare odoo-bin shares the same config instead of hitting a parallel universe.
+
+**Two refinements from review:**
+
+- relying on odoo-bin's rcfile auto-resolution is fragile (`~/.odoorc` and
+  `ODOO_RC` silently take precedence), so the CLI always passes `-c`
+  explicitly. The thin-wrapper claim is kept precise: manual runs share the
+  same *base* config, not the CLI-computed instance identity (addons path, db,
+  ports) — `odoo where` reproduces the full command.
+- a workspace-local `odoo.conf` was considered (it would restore "everything
+  inside `~/odoo`" and make multi-workspace via `ODOO_DIR` correct), and
+  rejected to keep manual odoo-bin runs sharing the config. Because `-c` is
+  explicit, the *location* is cheap to revisit later; the *format* decision is
+  the durable one.
+
+**The distilled decision rule** (applies to future debates of this kind): the
+CLI does not own state that odoo-bin could own (configuration); it freely owns
+state that odoo-bin cannot own (instance identity: worktrees, venvs, db-name
+conventions, port allocation).
+
+**End state**: the convention-migration plan (`requirements_v3.md`) has
+odoo-bin itself adopting these conventions and owning initial `odoo.conf`
+creation, at which point explicit `-c` becomes unnecessary on those versions —
+`-c` is the v1 defense, not the destination.
+
 ## Use click for python cli arg parsing framework
  - upstream distributions vendor click so the bash installer only needs a Python
    interpreter; Debian/Ubuntu packages may unvendor it and depend on
