@@ -306,9 +306,22 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
 
 ## Phases
 
-- **v1**: Core dev workflow — init, config (enterprise), module install, start/stop/restart, test, update, shell, rpc, log, db commands, basic worktrees, info, status, venv
-- **v2**: Support workflows — linked worktrees, `odoo repo add`, dump/restore/neutralize
+v1 is deliberately scoped down for internal testing: the minimal edit → run →
+test → inspect loop, foreground server only, no process lifecycle management.
+
+- **v1** (11 commands): init, config (`get`/`set`/`list`/`enable`, no wizard),
+  worktree create, venv, start (foreground only), module install, update, test,
+  db reset, shell, where
+- **v2**: everything deferred from v1 — server lifecycle (stop, restart,
+  `start --background`), the `config` wizard, `venv --apt`, info, status, doctor,
+  pull, log, rpc, db shell, db query, worktree list/remove — plus support
+  workflows: linked worktrees, `odoo repo add`, dump/restore/neutralize, checkout,
+  scaffold
 - **v3**: Platform — MCP frontend, cloud backend, extensions
+
+In v1, `.run/{worktree}/{db}/` holds only the `ports` file (the foreground
+server logs to the terminal); pid/socket/args and background logs arrive with the
+v2 server lifecycle.
 
 ## Available commands
 
@@ -327,20 +340,12 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
    - if installed but connection fails: tell user to run `odoo config`
 
 ### `odoo config` [v1]
-One command for all workspace configuration, in two modes: a bare interactive
-wizard (the friendly path) and scriptable subcommands (for agents). It is the
-merge of the former `odoo configure` + `odoo config`. `odoo init` never asks
-questions; `odoo config` is where all the questions live.
+Non-interactive workspace configuration: a thin, scriptable front over the shared
+`odoo.conf` plus a verb to enable optional repos. No interactive wizard in v1
+(the wizard is a v2 addition); `odoo init` writes good defaults and the user edits
+from there.
 
-Interactive:
- - `odoo config` (bare) — interactive wizard, pairs with `odoo init`
-   - walks postgres connection, enabling enterprise/themes/upgrade, dev mode,
-     demo data, log level
-   - all answers are written to `odoo.conf` or performed as repo clones
-   - `--no-input` disables prompting so an agent that runs bare `odoo config` by
-     accident never blocks
-
-Scriptable:
+Subcommands:
  - `odoo config list [--json] [--reveal]` — print resolved config (`odoo.conf`
    values plus which optional repos are enabled), secrets redacted unless `--reveal`
  - `odoo config get $KEY` — print one value
@@ -357,17 +362,16 @@ Keys:
 `enable` behavior:
  - clones/fetches the repo into `.repositories/` (e.g. `.repositories/enterprise.git`)
  - newly enabled optional repos are automatically available to future worktrees
- - asks whether to add it to existing worktrees (interactive); non-interactively
-   defaults to all compatible worktrees, with a flag to scope:
-   - all compatible worktrees
-   - selected worktrees
-   - no, only future worktrees
- - if the repo does not have a worktree's detected version, skip that worktree and warn
+ - adds it to existing compatible worktrees (with a flag to scope to selected /
+   future-only); if the repo lacks a worktree's detected version, skip and warn
  - `enterprise` defaults to git URL `git@github.com:odoo/enterprise.git`
    - relies on the user's existing SSH/git setup, does not manage SSH keys
    - also accepts HTTPS URLs (token-based auth or private mirrors)
    - supports local paths for users who already have the repo elsewhere
  - no `disable` verb in v1 (removing a cloned repo is destructive; punt)
+
+The interactive `odoo config` wizard (bare command that walks postgres
+connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_v2.md`.
 
 ### `odoo repo add` [v2]
  - register and clone/fetch an additional git repository into `.repositories/`
@@ -404,43 +408,42 @@ Keys:
  - after creation, addon membership is determined by the directories present at the worktree root
  - addon repositories use a branch matching the Odoo version when it exists; otherwise they use the repository's default branch and report a warning
 
-### `odoo worktree list` [v1]
+### `odoo worktree list` [v2]
  - list all worktrees with their version, branch, and running server status
 
-### `odoo worktree remove $NAME` [v1]
+### `odoo worktree remove $NAME` [v2]
  - stops any running servers for the worktree
- - cleans up `.run/` state for the worktree (logs, pid, socket, restart args)
+ - cleans up `.run/` state for the worktree
  - leaves `.data/` persistent database data untouched by default
  - deleting `.data/` requires an explicit flag or confirmation
  - removes the git worktree
 
-### `odoo venv [--apt]` [v1]
- - create/recreate the venv for the current version
- - `--apt` installs deps system-wide with apt instead of in a venv
+### `odoo venv` [v1]
+ - create/recreate the venv for the current version (kept in v1 for debugging)
+ - resolves to `.venvs/{version}` for the worktree's detected version
+ - `--apt` (install deps system-wide with apt) is deferred to v2
 
-### `odoo start / restart / stop` [v1]
- - `odoo start` — starts the server in the current terminal
+### `odoo start` [v1]
+ - `odoo start` — starts the server in the current terminal (foreground only in v1)
  - on first start for a database, creates/initializes an empty database (no modules)
  - at startup, if no non-base module is installed, prints a hint pointing to `odoo module install`
- - `odoo start --background` — starts in the background (useful for agents)
- - foreground by default is intentional: first-time users should see logs and can stop with Ctrl-C
- - agents and scripts should pass `--background` explicitly
  - `odoo start -d customer-a` — start with a specific database
  - dev mode (auto-reload) enabled by default, override with `--prod` or `dev_mode` in `odoo.conf`
- - `odoo restart` — restarts with the same configuration as the original start
-   - sanitized start parameters stored in `.run/{worktree}/{db}/args` for reliable restart
-   - secrets are resolved again from `odoo.conf` or environment at restart time
- - `odoo stop` — stop a running server
+ - allocates a free port and writes it to `.run/{worktree}/{db}/ports`; the server
+   logs to the terminal
+ - stop with Ctrl-C — there is no `odoo stop`/`odoo restart` in v1
+ - background mode (`--background`), `odoo stop`, and `odoo restart` (with
+   `.run/.../args`) are deferred to v2 — see `requirements_v2.md`
 
-### `odoo info` [v1]
+### `odoo info` [v2]
  - overview of the current setup: server port, credentials, branch statuses, etc.
 
-### `odoo status` [v1]
+### `odoo status` [v2]
  - short daily glance at the current target
  - shows current worktree, database, server status, URL, ports, version/branch, dirty repos
  - includes a concise next useful action when obvious
 
-### `odoo pull` [v1]
+### `odoo pull` [v2]
  - pulls latest changes across the repos
 
 ### `odoo test $MODULE [-t $TAG]` [v1]
@@ -450,7 +453,8 @@ Keys:
  - `-t test_foo` resolves to the correct odoo test tag format automatically
  - tours: TBD (requires running server + browser, likely a separate `odoo test-tour`)
 
-### `odoo log` [v1]
+### `odoo log` [v2]
+ - (v1 logs to the terminal in foreground; this command arrives with the v2 lifecycle)
  - logs are always written to `.run/{worktree}/{db}/log` as plain text
  - `odoo log` — show recent logs
  - `odoo log --follow` — tail logs in real time
@@ -461,7 +465,7 @@ Keys:
 ### `odoo shell [-c $CODE]` [v1]
  - opens an interactive python shell, or executes code and returns the output
 
-### `odoo rpc $PATH [$JSON]` [v1]
+### `odoo rpc $PATH [$JSON]` [v2]
  - executes an rpc call to the current server (new path-based API)
  - `odoo rpc /res.partner/search_read '{"domain": [], "fields": ["name"], "limit": 5}'`
  - JSON payload as second arg, or from stdin for larger payloads
@@ -481,10 +485,10 @@ Keys:
  - drops and recreates the db, then reinstalls that same set of modules
  - a database that never had modules is recreated empty
 
-### `odoo db shell` [v1]
+### `odoo db shell` [v2]
  - opens a psql shell in the current db
 
-### `odoo db query [--csv] $SQL` [v1]
+### `odoo db query [--csv] $SQL` [v2]
  - runs sql command in the current db, outputs the result
 
 ## Open points
@@ -496,10 +500,10 @@ Keys:
  - `odoo where` [v1] — show exactly what the CLI inferred for the current command context
    - workspace root, worktree, database, venv, addons paths, data dir, log file
    - sanitized `odoo-bin` command args for debugging and copy/paste
- - `odoo doctor` [v1] — diagnose broken or incomplete setups
+ - `odoo doctor` [v2] — diagnose broken or incomplete setups
    - should be designed to provide genuinely helpful, actionable diagnostics
    - avoid being only a shallow checklist of installed tools
- - `odoo pull` / `odoo fetch` [v1] — sync repositories with remotes
+ - `odoo pull` / `odoo fetch` [v2] — sync repositories with remotes
    - clarify what "pull across repos" means in a bare-repo + worktree model
    - fetch into `.repositories/` bare repos, then fast-forward worktrees?
    - what happens with dirty worktrees or local commits?

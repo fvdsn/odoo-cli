@@ -815,12 +815,19 @@ tests should grow with the implementation.
 6. Implement addons path resolution.
 7. Implement venv resolution.
 8. Implement `OdooBinService` and its version capability table.
-9. Implement run state, port allocation, and server start/stop.
-10. Implement DB reset (read installed modules from DB) / update / shell / query.
-11. Implement info/status/log/rpc/test and `odoo module install`.
-12. Implement `odoo config` (wizard + get/set/list/enable).
-13. Add linked worktrees and `odoo repo add`.
-14. Prepare MCP/backend extension points after the local CLI is stable.
+9. Implement port allocation and foreground `odoo start` (write `.run/.../ports`).
+10. Implement DB reset (read installed modules from DB), `odoo update`, and
+    `odoo module install`.
+11. Implement `odoo test`, `odoo shell`, and `odoo where`.
+12. Implement `odoo config` (`get`/`set`/`list`/`enable`).
+
+That completes the v1 surface (11 commands). The remaining steps are v2+:
+
+13. Add the server lifecycle (`stop`, `restart`, `--background`, `.run` pid/log/
+    socket/args), then `info`/`status`/`log`/`rpc`/`db shell`/`db query`/`doctor`/
+    `pull`/`worktree list`/`worktree remove` and the `config` wizard.
+14. Add linked worktrees and `odoo repo add`.
+15. Prepare MCP/backend extension points after the local CLI is stable.
 
 ## Greenfield stance
 
