@@ -38,6 +38,16 @@ version as odoo-bin gains conventions.
    rather than maintain a competing copy
  - related: the parked idea in `requirements_v2.md` (odoo-bin resolving and
    reporting its own config) is the same direction of travel
+ - odoo-bin should also own *initial* `odoo.conf` creation (e.g. an
+   `odoo-bin config init`), so the file is created at the location odoo-bin
+   itself resolves — eliminating the CLI/odoo-bin config-location mismatch
+   class at the source instead of defending against it with explicit `-c`
+   - ordering: conf creation needs a runnable odoo-bin, so `odoo init` must
+     clone, create the worktree, and set up the venv first; on versions
+     without it, the CLI polyfills (writes the standard location, passes `-c`)
+   - split of responsibilities: odoo-bin owns the file's location, existence,
+     and format; the CLI applies its opinionated dev defaults (`dev_mode`,
+     `log_level`, demo) afterwards through the normal `config set` path
  - once conventions are in core, manual `odoo-bin` runs genuinely behave the
    same as CLI runs, completing the thin-wrapper rationale for the shared
    `odoo.conf` at the standard location
