@@ -26,6 +26,12 @@ odoo init          # defaults to latest stable version (e.g. 19.0)
 odoo start
 ```
 
+Alternative:
+```bash
+curl http://odoo.com/get-started.sh (installs odoo-cli, then odoo init)
+odoo start
+```
+
 (`odoo init 19.0` also works to pin a specific version.)
 
 Expected workspace setup:
