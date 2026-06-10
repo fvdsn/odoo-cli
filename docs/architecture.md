@@ -246,6 +246,8 @@ Rules:
   via `odoo repo enable`
 - customer addon repositories are added by `odoo repo add`
 - there is no stored enabled/disabled flag or URL; both come from disk
+- a bare repo without an `origin` remote is allowed (manual/local setups) and
+  surfaces as `url = None`; operations that must fetch raise a typed error
 
 ### `Worktree`
 
@@ -458,7 +460,11 @@ It should only read the filesystem. It should not read an `addons = [...]` list.
 
 Responsibilities:
 
-- detect Odoo Python requirement from `odoo/odoo/release.py`
+- detect the supported Python range from `odoo/odoo/release.py`
+  (`MIN_PY_VERSION` / `MAX_PY_VERSION`) and select a compatible interpreter,
+  independent of the interpreter running the CLI
+- provision a missing compatible interpreter through uv when available;
+  otherwise raise an actionable error with platform install instructions
 - resolve shared venv path `.venvs/{version}` for the detected version
 - create venvs with uv when it is on PATH, falling back to `python3 -m venv`
   + pip (the CLI itself never requires uv)
@@ -486,7 +492,9 @@ not on the command line.
 
 Responsibilities:
 
-- initialize an empty DB on first start (no modules)
+- `ensure_initialized(target)`: create and initialize the database empty (no
+  modules) when it does not exist; called by every command that needs an
+  initialized database
 - reset DB: read the currently installed modules, drop/recreate, reinstall that set
 - expose `db shell` and `db query`
 
@@ -546,6 +554,9 @@ Responsibilities:
   reserved by an existing worktree's `ports` file (http and gevent share one
   reservation pool); availability is verified by binding, and the `ports` file
   is written before the final bind check so concurrent starts see each other
+- reservation writes are atomic (temp file + rename); a newly created
+  reservation is rolled back when the final bind fails, a pre-existing one is
+  left unchanged
 - start foreground/background server
 - stop server
 - restart using `.run/{worktree}/{db}/args`
@@ -793,15 +804,16 @@ The e2e suite should cover a small number of use-case flows from
 `usecase.md`, not every command permutation:
 
 - initialize a workspace for one Odoo version
-- start the server (foreground in v1) and wait until it listens on the
-  allocated port
+- start the server (in v1 the harness spawns `odoo start` as a subprocess) and
+  wait until it listens on the allocated port
 - verify `where`, URL, and ports
 - install a module with `odoo module install`, then reset the database and
   confirm the module is reinstalled (DB is the source of truth)
 - update a simple module
 - create a linked worktree with an addon repository and confirm target
   resolution and addons discovery from inside it
-- stop the server and confirm stale runtime state is handled
+- terminate the server subprocess (SIGINT, as Ctrl-C would) and assert the
+  `.run/.../ports` state afterwards
 
 E2E tests must use unique database names, clean up best-effort, and print enough
 diagnostics to understand a failure. They should be suitable for manual runs and
@@ -833,7 +845,7 @@ tests should grow with the implementation.
 12. Implement `odoo config` (`get`/`set`/`list`).
 13. Implement `odoo repo add`, `odoo repo enable`, and linked worktree creation.
 
-That completes the v1 surface (12 commands). The remaining steps are v2+:
+That completes the v1 surface. The remaining steps are v2+:
 
 14. Add the server lifecycle (`stop`, `restart`, `--background`, `.run` pid/log/
     socket/args), then `info`/`status`/`log`/`rpc`/`db shell`/`db query`/

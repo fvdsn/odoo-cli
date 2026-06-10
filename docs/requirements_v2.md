@@ -5,7 +5,8 @@ canonical v1 spec; items here are explicitly out of scope for the first version
 and will be designed/promoted later.
 
 ## Configurable Odoo application credentials
- - v1 does not manage Odoo login credentials; `odoo rpc` assumes the development
+ - v1 does not manage Odoo login credentials and ships no command that needs
+   them; when `odoo rpc` lands in v2 it initially assumes the development
    default `admin` / `admin` (see `requirements.md` → "Odoo application credentials")
  - v2 makes the Odoo login configurable, separate from the PostgreSQL credentials
  - likely stored in `odoo.conf` (decide on concrete keys; note `admin_passwd` in
@@ -16,10 +17,10 @@ and will be designed/promoted later.
    password unless explicitly requested
 
 ## Deferred from v1 (internal-testing scope reduction)
-v1 was scoped to 12 commands for internal testing (init, config, repo —
-add/enable, worktree create — full and linked, venv, start, where, module
-install, update, test, db reset, shell). The following were specced as v1 but pushed to v2; they
-keep a `[v2]` tag inline in `requirements.md`:
+v1 was scoped to a minimal command set for internal testing (init, config, repo
+— add/enable, worktree create — full and linked, venv, start, where, module
+install, update, test, db reset, shell). The following were specced as v1 but
+pushed to v2; they keep a `[v2]` tag inline in `requirements.md`:
 
  - **Server lifecycle** — `odoo stop`, `odoo restart`, and `odoo start --background`.
    v1 is foreground-only: `odoo start` runs in the terminal, Ctrl-C to stop, and
@@ -36,6 +37,10 @@ keep a `[v2]` tag inline in `requirements.md`:
  - **`odoo venv --apt` / no-venv mode** — running Odoo against system-wide
    python packages installed with apt, possibly without any venv at all
    (v1 always creates a venv, with uv or `python3 -m venv` + pip).
+ - **Agent context generation** — workspace files for AI coding agents:
+   CLAUDE.md and skills, plus the major agent-harness formats and a
+   vendor-neutral AGENTS.md. v1 creates no agent files (the `.claude/`
+   directory was dropped from the v1 workspace layout).
  - **`odoo info`** and **`odoo status`** — overview / status views (`odoo where`,
    the resolved-context view, stayed in v1).
  - **`odoo log`** — log viewer with `--follow`/`--date`/`--search` (needs the v2
