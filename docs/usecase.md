@@ -1,8 +1,10 @@
-# Odoo CLI use cases
+# Odoo CLI use cases (v1)
 
-This document describes concrete user flows for the Odoo CLI. It complements
+This document describes concrete user flows for the v1 Odoo CLI. It complements
 `requirements.md`: requirements define the rules, while this file shows the
 commands, resulting workspace layout, and source of truth for common scenarios.
+Flows that depend on v2 commands (background servers, status/log, rpc, support
+and linked-worktree workflows) live in `usecase_v2.md`.
 
 The examples intentionally avoid duplicated state:
 
@@ -13,6 +15,10 @@ The examples intentionally avoid duplicated state:
 - persistent Odoo data lives in `.data/{worktree}/{db}/`
 - the only configuration file is the shared `~/.config/odoo/odoo.conf` (Odoo's own
   format); the CLI keeps no `workspace.toml` and stores no derived runtime facts
+
+In v1 the server runs in the foreground (Ctrl-C to stop), so `.run/{worktree}/{db}/`
+holds only the `ports` file. The pid/log/socket/args files appear with the v2
+server lifecycle.
 
 ## 1. First local Odoo setup
 
@@ -50,11 +56,7 @@ Expected workspace setup:
     .run/
         19.0/
             odoo-19.0/
-                pid
-                log
                 ports
-                socket
-                args
     .data/
         19.0/
             odoo-19.0/
@@ -90,18 +92,18 @@ Source of truth:
 
 ## 2. Daily development in one worktree
 
-Goal: a developer returns to an existing worktree, starts the server in the
-background, checks status, watches logs, updates modules, and stops the server.
+Goal: a developer returns to an existing worktree, starts the server, updates
+modules, and runs tests.
 
 Commands:
 
 ```bash
-odoo status
-odoo start --background
-odoo log --follow
+cd ~/odoo/19.0      # target inferred from cwd (or pass -w 19.0)
+odoo start          # foreground; Ctrl-C to stop
+
+# --- in another terminal ---
 odoo update
 odoo test installed
-odoo stop
 ```
 
 Expected workspace setup:
@@ -111,11 +113,7 @@ Expected workspace setup:
     .run/
         19.0/
             odoo-19.0/
-                pid
-                log
                 ports
-                socket
-                args
     .data/
         19.0/
             odoo-19.0/
@@ -128,17 +126,16 @@ Expected workspace setup:
 Source of truth:
 
 - target worktree resolves to `19.0` when it is still the only worktree
-- once multiple worktrees exist, the same commands must be run from inside the
-  target worktree or with `--worktree`
+- once multiple worktrees exist, run from inside the target worktree or pass `--worktree`
 - target database defaults to `odoo-19.0`
-- `odoo status` reads running server details from `.run/19.0/odoo-19.0/`
-- restart parameters are read from `.run/19.0/odoo-19.0/args`
+- the assigned port is in `.run/19.0/odoo-19.0/ports`
+- `odoo update` and `odoo test` do not require stopping the foreground server
 
 ## 2b. Edit-reload-update cycle
 
 Goal: a developer edits code and sees the result in the browser. This is the
-most common daily loop — XML edits auto-reload, Python edits restart the server,
-and model changes require a database update.
+most common daily loop — XML edits auto-reload, Python edits need a restart, and
+model changes require a database update.
 
 Commands:
 
@@ -154,22 +151,20 @@ $EDITOR 19.0/odoo/addons/sale/views/sale_order_views.xml
 
 # Edit a Python file (e.g. a controller or method)
 $EDITOR 19.0/odoo/addons/sale/models/sale_order.py
-# Python changes require a server restart
-odoo restart
-# refresh the browser
+# Python changes need a restart: Ctrl-C the server, then run `odoo start` again
+# (v1 has no `odoo restart`)
 
 # Add a new field or change model schema
 $EDITOR 19.0/odoo/addons/sale/models/sale_order.py
 # model/schema changes require a module update to apply to the database
 odoo update sale
 # refresh the browser
-
 ```
 
 Source of truth:
 
-- dev mode is enabled by default: XML changes auto-reload, Python changes
-  require a manual `odoo restart`
+- dev mode is enabled by default: XML changes auto-reload, Python changes need a
+  manual restart (Ctrl-C + `odoo start`; `odoo restart` arrives in v2)
 - model/schema changes (new fields, altered constraints) require
   `odoo update <module>` to update the database
 - new modules are installed with `odoo module install <module>` (or through the
@@ -188,21 +183,18 @@ Commands using `-w`:
 # starting from the workspace created by `odoo init 19.0`
 odoo worktree create master
 
-odoo start -w 19.0 --background
-odoo start -w master --background
-
-odoo status -w 19.0
-odoo status -w master
-
-odoo stop -w 19.0
-odoo stop -w master
+# run each server in its own terminal (foreground)
+# terminal 1:
+odoo start -w 19.0
+# terminal 2:
+odoo start -w master
 ```
 
 Alternative: `cd` into the worktree instead of using `-w`:
 
 ```bash
-cd ~/odoo/19.0 && odoo start --background
-cd ~/odoo/master && odoo start --background
+cd ~/odoo/19.0 && odoo start
+cd ~/odoo/master && odoo start
 ```
 
 Expected workspace setup:
@@ -218,18 +210,10 @@ Expected workspace setup:
     .run/
         19.0/
             odoo-19.0/
-                pid
-                log
                 ports
-                socket
-                args
         master/
             odoo-master/
-                pid
-                log
                 ports
-                socket
-                args
     .data/
         19.0/
             odoo-19.0/
@@ -254,6 +238,7 @@ Source of truth:
 - default databases are derived from the targeted worktree: `odoo-19.0` and
   `odoo-master`
 - each `(worktree, database)` pair has its own `.run/` and `.data/` directories
+- each server auto-allocates a distinct port, so both can run at once
 
 ## 4. Feature development with a full worktree
 
@@ -280,11 +265,7 @@ Expected workspace setup:
     .run/
         fix-pos-flow/
             odoo-fix-pos-flow/
-                pid
-                log
                 ports
-                socket
-                args
     .data/
         fix-pos-flow/
             odoo-fix-pos-flow/
@@ -346,178 +327,3 @@ Source of truth:
 - new worktrees include enterprise automatically because `enterprise.git` is now present
 - if the enterprise repository lacks a worktree's detected Odoo version, the CLI
   skips that worktree and reports a warning
-
-## 6. Support workflow: many customer databases, standard Odoo source
-
-Goal: support works with several customer databases on the same standard Odoo
-version without duplicating the Odoo source tree.
-
-Commands:
-
-```bash
-odoo worktree create 19.0
-
-odoo start -d customer-a --background
-odoo start -d customer-b --background
-
-odoo status -d customer-a
-odoo status -d customer-b
-```
-
-Expected workspace setup:
-
-```text
-~/odoo/
-    .run/
-        19.0/
-            customer-a/
-                pid
-                log
-                ports
-                socket
-                args
-            customer-b/
-                pid
-                log
-                ports
-                socket
-                args
-    .data/
-        19.0/
-            customer-a/
-                filestore/
-            customer-b/
-                filestore/
-    19.0/
-        odoo/
-        documentation/
-```
-
-Source of truth:
-
-- both server instances use the same `19.0` worktree
-- target worktree resolves to `19.0` because it is the only worktree
-- database target is explicit through `-d`
-- each `(worktree, database)` pair has its own `.run` and `.data` directory
-- customer databases receive distinct ports even though they share the worktree
-- nothing is stored per database; each database's `.run`/`.data` directories and
-  its installed modules are the only state
-
-## 7. Support workflow: customer addons with linked worktree
-
-Goal: support needs a customer-specific addon repository, but should still avoid
-duplicating standard Odoo source directories.
-
-Commands:
-
-```bash
-odoo worktree create 19.0
-
-odoo repo add customer-a-addons git@github.com:customer/customer-a-addons.git
-odoo repo add support-tools git@github.com:odoo/support-tools.git
-
-odoo worktree create customer-a 19.0 \
-  --linked-from 19.0 \
-  --addon customer-a-addons \
-  --addon support-tools
-
-cd ~/odoo/customer-a
-odoo start -d customer-a
-```
-
-Expected workspace setup:
-
-```text
-~/odoo/
-    .repositories/
-        odoo.git
-        documentation.git
-        customer-a-addons.git
-        support-tools.git
-    .run/
-        customer-a/
-            customer-a/
-                pid
-                log
-                ports
-                socket
-                args
-    .data/
-        customer-a/
-            customer-a/
-                filestore/
-    19.0/
-        odoo/
-        documentation/
-    customer-a/
-        odoo -> ../19.0/odoo
-        documentation -> ../19.0/documentation
-        enterprise -> ../19.0/enterprise      <- if enterprise is enabled
-        customer-a-addons/
-        support-tools/
-```
-
-No config file changes — repos and links are all on disk.
-
-Source of truth:
-
-- `odoo repo add` clones each addon repo into `.repositories/*.git`; that presence
-  is the registry (URLs are the bare repos' git remotes)
-- the symlinked `customer-a/odoo -> ../19.0/odoo` marks `customer-a` as a linked
-  worktree and identifies `19.0` as its source (the former `linked_from`)
-- standard repositories are symlinks to the source worktree
-- optional standard repositories such as `enterprise` are symlinked when present
-- addon repositories are real git worktrees at the linked worktree root
-- active custom addons are discovered from `customer-a/`, not stored anywhere
-- `--addon` is a creation-time checkout action only
-
-## 8. Agent-friendly local validation
-
-Goal: an agent starts Odoo, finds the URL and credentials, uses documentation,
-executes a machine-readable command, and shuts the server down.
-
-Commands:
-
-```bash
-odoo start --background
-odoo status --json
-odoo rpc /res.partner/search_read '{"domain": [], "fields": ["name"], "limit": 5}'
-odoo stop
-```
-
-Expected workspace setup:
-
-```text
-~/.config/odoo/odoo.conf    <- shared config, outside the workspace
-~/odoo/
-    .repositories/
-        odoo.git
-        documentation.git
-    .run/
-        19.0/
-            odoo-19.0/
-                ports
-                args
-    19.0/
-        odoo/
-        documentation/
-```
-
-Source of truth:
-
-- documentation is cloned by default for local reference
-- URL and assigned ports come from `.run/{worktree}/{db}/ports`
-- v1 does not manage Odoo login credentials; `odoo rpc` uses the dev default `admin`/`admin`
-- secrets are redacted in general status/info output unless explicitly requested
-- command output for agents should support `--json` where useful
-
-## Future use cases to define
-
-These flows are important, but need more design before they become normative:
-
-- dump, restore, and neutralize for support workflows
-- adding or removing addon repositories from an existing linked worktree
-- Odoo.sh/cloud backend command sequences
-- MCP frontend workflows
-- upgrade workflows
-- module scaffolding
