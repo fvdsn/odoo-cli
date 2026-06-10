@@ -134,8 +134,9 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
    - `data_dir` is NOT passed in v1 — odoo-bin uses its default location, shared
      by all dbs/servers; per-instance `--data-dir` → `.data/{worktree}/{db}` is v2
  - resulting override chain: `odoo.conf` (base) → environment variables → CLI args
- - because the running configuration is `odoo.conf` plus computed args, `odoo
-   info` / `odoo where` are the canonical way to see the fully resolved config
+ - because the running configuration is `odoo.conf` plus computed args, the v2
+   `odoo info` / `odoo where` are the canonical way to see the fully resolved
+   config (v1 has no dedicated resolved-config view)
 
 ## Use click for python cli arg parsing framework
  - available in debian `python3-click`
@@ -311,14 +312,14 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
 ## Phases
 
 v1 is deliberately scoped down for internal testing: the minimal edit → run →
-test → inspect loop, foreground server only, no process lifecycle management.
+test loop, foreground server only, no process lifecycle management.
 
-- **v1** (11 commands): init, config (`get`/`set`/`list`/`enable`, no wizard),
+- **v1** (10 commands): init, config (`get`/`set`/`list`/`enable`, no wizard),
   worktree create, venv, start (foreground only), module install, update, test,
-  db reset, shell, where
+  db reset, shell
 - **v2**: everything deferred from v1 — server lifecycle (stop, restart,
-  `start --background`), the `config` wizard, `venv --apt`, info, status, doctor,
-  pull, log, rpc, db shell, db query, worktree list/remove — plus support
+  `start --background`), the `config` wizard, `venv --apt`, where, info, status,
+  doctor, pull, log, rpc, db shell, db query, worktree list/remove — plus support
   workflows: linked worktrees, `odoo repo add`, dump/restore/neutralize, checkout,
   scaffold
 - **v3**: Platform — MCP frontend, cloud backend, extensions
@@ -503,7 +504,7 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see `requirements_
      reset should also clear that database's filestore/data directory
 
 ## Future commands (to be designed)
- - `odoo where` [v1] — show exactly what the CLI inferred for the current command context
+ - `odoo where` [v2] — show exactly what the CLI inferred for the current command context
    - workspace root, worktree, database, venv, addons paths, data dir, log file
    - sanitized `odoo-bin` command args for debugging and copy/paste
  - `odoo doctor` [v2] — diagnose broken or incomplete setups

@@ -33,8 +33,8 @@ were specced as v1 but pushed to v2; they keep a `[v2]` tag inline in
  - **`odoo config` wizard** — the bare interactive `odoo config` (postgres
    connection, enterprise, dev mode, ...). v1 keeps only `get`/`set`/`list`/`enable`.
  - **`odoo venv --apt`** — system-wide apt install path (v1 keeps plain `odoo venv`).
- - **`odoo info`** and **`odoo status`** — introspection that overlaps `odoo where`
-   (the one introspection command kept in v1).
+ - **`odoo where`**, **`odoo info`**, and **`odoo status`** — introspection /
+   resolved-context views. v1 ships no dedicated introspection command.
  - **`odoo log`** — log viewer with `--follow`/`--date`/`--search` (needs the v2
    `.run/.../log` file; v1 logs to the terminal).
  - **`odoo rpc`** — path-based RPC for agents.

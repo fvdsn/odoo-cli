@@ -822,14 +822,14 @@ tests should grow with the implementation.
 9. Implement port allocation and foreground `odoo start` (write `.run/.../ports`).
 10. Implement DB reset (read installed modules from DB), `odoo update`, and
     `odoo module install`.
-11. Implement `odoo test`, `odoo shell`, and `odoo where`.
+11. Implement `odoo test` and `odoo shell`.
 12. Implement `odoo config` (`get`/`set`/`list`/`enable`).
 
-That completes the v1 surface (11 commands). The remaining steps are v2+:
+That completes the v1 surface (10 commands). The remaining steps are v2+:
 
 13. Add the server lifecycle (`stop`, `restart`, `--background`, `.run` pid/log/
-    socket/args), then `info`/`status`/`log`/`rpc`/`db shell`/`db query`/`doctor`/
-    `pull`/`worktree list`/`worktree remove` and the `config` wizard.
+    socket/args), then `where`/`info`/`status`/`log`/`rpc`/`db shell`/`db query`/
+    `doctor`/`pull`/`worktree list`/`worktree remove` and the `config` wizard.
 14. Add linked worktrees and `odoo repo add`.
 15. Prepare MCP/backend extension points after the local CLI is stable.
 
