@@ -527,6 +527,13 @@ small capability table keyed by detected Odoo version. Examples include renamed
 or removed flags, test behavior, dev-mode flags, gevent/longpolling behavior, and
 module install/update invocation details.
 
+The capability table is also the delegation mechanism for conventions that
+migrate into odoo-bin itself (derived db name, addons discovery, port
+allocation): on versions where odoo-bin owns a convention, the table says to
+pass nothing and let odoo-bin derive it; on older versions the CLI computes and
+passes the args, acting as a polyfill. See `requirements_v3.md` → "Convention
+migration into odoo-bin".
+
 ### `ServerService`
 
 Responsibilities:

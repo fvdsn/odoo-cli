@@ -6,6 +6,42 @@ foundation that AI agents, cloud services, and advanced workflows can build on.
 Nothing here is committed scope yet — these are design intents, collected so the
 earlier phases don't paint us into a corner, to be fleshed out once v2 is stable.
 
+## Convention migration into odoo-bin
+
+Timing note: tracked in this document for convenience, but this is not v3-gated
+work — the co-speccing should happen now (v1-era), and delegation lands per Odoo
+version as odoo-bin gains conventions.
+
+ - direction (CTO): rework odoo-bin so that `odoo-bin start`, `odoo-bin test`,
+   ... adopt the same conventions as the CLI (derived db name, addons discovery,
+   port allocation, dev-mode defaults), thinning the wrapping further
+ - model: the CLI is the fast-moving lab — conventions are invented and proven
+   in the CLI, the good ones are upstreamed into odoo-bin, and the CLI polyfills
+   them for older Odoo versions
+ - mechanism: `OdooBinService`'s capability table delegates per version
+   ("version ≥ X: pass nothing, odoo-bin derives it; version < X: the CLI
+   computes and passes args"); the table feature-detects where conventions live
+ - hard boundary — what can never migrate down: anything that runs before
+   odoo-bin can run, or spans instances/versions — repo cloning/management,
+   venv creation (odoo-bin runs inside the venv it would have to create),
+   worktrees and linked worktrees, workspace init, cross-version operations
+ - the CLI must be built as if it fully owns the conventions — it does, for
+   17.0–19.0, for years; the migration changes what the CLI gets to delete
+   later, not what gets built now
+ - divergence risk: odoo-bin must implement the same conventions, not cousins
+   of them — `requirements.md` (db naming, addons-path order, ports-file
+   semantics) is the reference spec and should be reviewed by whoever does the
+   odoo-bin rework before it starts
+ - open: where does odoo-bin keep runtime state (e.g. allocated ports) once it
+   owns allocation? It knows nothing of the workspace `.run/`. On versions
+   where odoo-bin owns a convention, the CLI should read odoo-bin's state
+   rather than maintain a competing copy
+ - related: the parked idea in `requirements_v2.md` (odoo-bin resolving and
+   reporting its own config) is the same direction of travel
+ - once conventions are in core, manual `odoo-bin` runs genuinely behave the
+   same as CLI runs, completing the thin-wrapper rationale for the shared
+   `odoo.conf` at the standard location
+
 ## MCP frontend
  - expose CLI operations as MCP tools for AI agents (`odoo-mcp` / `odoo mcp serve`)
  - MCP tools call the same core services as CLI commands; no business logic in

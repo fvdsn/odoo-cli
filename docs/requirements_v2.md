@@ -59,3 +59,5 @@ validate them early.)
  - offload `odoo.conf` resolution to odoo-bin itself (an odoo-bin command that
    prints the resolved config path/contents), instead of the CLI always passing
    `-c ~/.config/odoo/odoo.conf`; revisit if/when odoo-bin grows such a command
+   — part of the broader convention-migration direction, see `requirements_v3.md`
+   → "Convention migration into odoo-bin"
