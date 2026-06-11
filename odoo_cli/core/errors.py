@@ -1,0 +1,97 @@
+"""Typed errors raised by core services.
+
+The CLI layer translates these into concise messages and exit codes
+(0 success, 1 user-facing failure, 2 usage error). `hint` carries an
+optional one-line next action shown after the message.
+"""
+
+
+class OdooCliError(Exception):
+    """Base class for user-facing failures (exit code 1)."""
+
+    def __init__(self, message: str, *, hint: str | None = None):
+        super().__init__(message)
+        self.message = message
+        self.hint = hint
+
+
+class WorkspaceNotFound(OdooCliError):
+    """No workspace at the resolved location (missing .repositories/odoo.git)."""
+
+
+class InvalidWorkspace(OdooCliError):
+    """A workspace exists but is broken or incomplete."""
+
+
+class TargetAmbiguous(OdooCliError):
+    """Multiple worktrees exist and none was selected."""
+
+
+class WorktreeNotFound(OdooCliError):
+    pass
+
+
+class WorktreeExists(OdooCliError):
+    pass
+
+
+class InvalidWorktreeName(OdooCliError):
+    pass
+
+
+class RepositoryNotFound(OdooCliError):
+    pass
+
+
+class RepositoryExists(OdooCliError):
+    pass
+
+
+class RepositoryHasNoRemote(OdooCliError):
+    """The bare repo has no `origin` remote; operations that fetch need one."""
+
+
+class VersionNotFound(OdooCliError):
+    """The requested Odoo version/ref does not exist in a repository."""
+
+
+class UnsupportedOdooVersion(OdooCliError):
+    """The detected Odoo version is older than what the CLI supports."""
+
+
+class NoCompatiblePython(OdooCliError):
+    """No interpreter satisfies the worktree's MIN/MAX_PY_VERSION range."""
+
+
+class PortUnavailable(OdooCliError):
+    """The instance's reserved port is taken by another process."""
+
+
+class PostgresError(OdooCliError):
+    pass
+
+
+class DatabaseNotFound(OdooCliError):
+    """Read-only command targeting a database that does not exist."""
+
+
+class ServerNotRunning(OdooCliError):
+    pass
+
+
+class ProcessFailed(OdooCliError):
+    """A subprocess exited non-zero where success was required."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        argv: list[str] | None = None,
+        returncode: int | None = None,
+        stderr: str | None = None,
+        hint: str | None = None,
+    ):
+        super().__init__(message, hint=hint)
+        self.argv = argv or []
+        self.returncode = returncode
+        self.stderr = stderr
