@@ -690,6 +690,14 @@ The default test suite should be fast, deterministic, and runnable on a machine
 that has only Python 3.11 and the vendored dependencies. Tests that need git,
 PostgreSQL, or a real Odoo checkout should be clearly separated.
 
+Coverage works at two levels:
+
+- every core service's public interface is covered by local unit tests, with
+  fakes at the process-runner boundary — the module interface is the unit
+  under test
+- the tool as a whole is covered by opt-in end-to-end tests that create a real
+  workspace and execute the real `odoo` commands
+
 Test layout:
 
 ```text
@@ -777,6 +785,12 @@ with local `file://` repositories or fake process-runner responses.
 ### Real Odoo end-to-end tests
 
 Real-Odoo tests are valuable, but they should be opt-in.
+
+E2e tests drive the CLI exactly as a user would: they execute the real `odoo`
+entry point as a subprocess (no `CliRunner`, no direct service calls) with
+`ODOO_DIR` pointing at a temporary workspace, starting from `odoo init`.
+Assertions read the resulting workspace layout, database state, and command
+output.
 
 They should run only when an explicit flag is set, for example:
 
