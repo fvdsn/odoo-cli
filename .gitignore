@@ -10,8 +10,5 @@ build/
 # Virtual environment
 .venv/
 
-# Test workspace
-test/
-
 # Ondeck
 .ondeck
