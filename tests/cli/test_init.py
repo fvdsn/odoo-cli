@@ -180,6 +180,38 @@ class TestInit(InitCommandTestCase):
 
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("retrying with a full clone", result.output)
+
+    def test_promisor_failure_reclones_the_repo_that_failed(self):
+        """P2 regression: a promisor failure in documentation.git must
+        reclone documentation, not odoo."""
+        self.script_happy_path()
+        doc_repo = self.root / ".repositories" / "documentation.git"
+        prefix = ("git", "-C", str(doc_repo), "worktree", "add")
+
+        def fail_once(call):
+            for index, (registered, result, _effect) in enumerate(self.runner._scripts):
+                if registered == prefix and result.returncode == 128:
+                    self.runner._scripts.pop(index)
+                    break
+            Path(call[5]).mkdir(parents=True, exist_ok=True)
+
+        self.runner.expect(
+            *prefix,
+            returncode=128,
+            stderr="fatal: could not fetch abc from promisor remote\n",
+            effect=fail_once,
+        )
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("blobless documentation checkout failed", result.output)
+        reclones = [
+            c for c in self.runner.calls
+            if c[:2] == ("git", "clone") and "documentation" in c[-1]
+            and "--filter=blob:none" not in c
+        ]
+        self.assertTrue(reclones, "documentation was not recloned full")
         clones = [c for c in self.runner.calls if c[:2] == ("git", "clone")]
         self.assertGreaterEqual(len(clones), 3)
         self.assertNotIn("--filter=blob:none", clones[-1])

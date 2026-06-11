@@ -153,21 +153,26 @@ class WorktreeService:
 
         result = WorktreeCreateResult(worktree=Worktree(name=name, path=path))
         path.mkdir(parents=True)
-        for repo_name in (*DEFAULT_REPOS, *OPTIONAL_REPOS):
-            if (source / repo_name).exists():
-                os.symlink(f"../{source_name}/{repo_name}", path / repo_name)
-                result.linked.append(repo_name)
+        try:
+            for repo_name in (*DEFAULT_REPOS, *OPTIONAL_REPOS):
+                if (source / repo_name).exists():
+                    os.symlink(f"../{source_name}/{repo_name}", path / repo_name)
+                    result.linked.append(repo_name)
 
-        for repo in addon_repos:
-            base = version
-            if not self.git.branch_exists(repo.path, base):
-                base = self.git.default_branch(repo.path)
-                result.warnings.append(
-                    f"{repo.name}: no branch '{version}', using default "
-                    f"branch '{base}'"
-                )
-            self._checkout(repo.path, path / repo.name, name, base)
-            result.checked_out.append(repo.name)
+            for repo in addon_repos:
+                base = version
+                if not self.git.branch_exists(repo.path, base):
+                    base = self.git.default_branch(repo.path)
+                    result.warnings.append(
+                        f"{repo.name}: no branch '{version}', using default "
+                        f"branch '{base}'"
+                    )
+                self._checkout(repo.path, path / repo.name, name, base)
+                result.checked_out.append(repo.name)
+        except Exception:
+            shutil.rmtree(path, ignore_errors=True)
+            self.prune_stale_entries(workspace)
+            raise
         return result
 
     def add_repository(
@@ -181,13 +186,26 @@ class WorktreeService:
                 f"linked worktree (enable acts on its source "
                 f"'{worktree.linked_from}')",
             )
-        if (worktree.path / repo_name).exists():
-            return AddRepoResult(worktree.name, False, "already present")
+        dest = worktree.path / repo_name
+        if dest.exists():
+            if dest.is_symlink() or (dest / ".git").exists():
+                return AddRepoResult(worktree.name, False, "already present")
+            # exists but is no usable checkout (e.g. an earlier failed add):
+            # don't let it poison every retry, but don't delete user data
+            return AddRepoResult(
+                worktree.name, False,
+                f"{dest} exists but is not a git checkout; remove it and re-run",
+            )
         repo = self.repositories.get(workspace, repo_name)
         version = self.detect_version(worktree)
         if not self.git.branch_exists(repo.path, version):
             return AddRepoResult(worktree.name, False, f"no branch '{version}'")
-        self._checkout(repo.path, worktree.path / repo_name, worktree.name, version)
+        try:
+            self._checkout(repo.path, dest, worktree.name, version)
+        except Exception:
+            shutil.rmtree(dest, ignore_errors=True)
+            self.git.worktree_prune(repo.path)
+            raise
         return AddRepoResult(worktree.name, True)
 
     def is_valid(self, worktree: Worktree) -> bool:

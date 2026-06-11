@@ -102,7 +102,20 @@ class RepositoryService:
         if self.exists(workspace, name):
             spec = self.get(workspace, name)
             if effective_full and self.git.is_partial_clone(spec.path):
-                return self.replace_with_clone(workspace, name, spec.url, full=True)
+                if full:
+                    # explicit --full: convert, or refuse loudly when
+                    # worktrees depend on the repo (replace_with_clone raises)
+                    return self.replace_with_clone(
+                        workspace, name, spec.url, full=True
+                    )
+                if not self._has_checkout_worktrees(spec.path):
+                    # old git, partial repo, nothing depends on it: upgrade
+                    return self.replace_with_clone(
+                        workspace, name, spec.url, full=True
+                    )
+                # old git but the partial repo demonstrably works (worktrees
+                # attached): keep it and fetch — recloning happens only when
+                # a checkout actually fails (promisor retry)
             if spec.url is None:
                 raise RepositoryHasNoRemote(
                     f"repository '{name}' has no origin remote; cannot fetch"
@@ -162,6 +175,15 @@ class RepositoryService:
             if path.resolve() != repo:
                 return True
         return False
+
+    def clone_mode(self, full: bool) -> str:
+        """The effective strategy for display: old git silently forces full
+        clones, and the output must not claim otherwise."""
+        if full:
+            return "full"
+        if not self.git.supports_reliable_blobless_clone():
+            return "full: this git version has unreliable blobless clones"
+        return "blobless"
 
     def has_version(self, repo: RepositorySpec, version: str) -> bool:
         return self.git.branch_exists(repo.path, version)

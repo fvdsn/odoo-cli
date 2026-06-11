@@ -6,6 +6,8 @@ command that needs it (`odoo module install`, `odoo start`).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
 from odoo_cli.core.errors import PostgresError
@@ -67,9 +69,10 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
     # the workspace only resolves once odoo.git exists; build the value
     # object directly for the bootstrap clones
     bootstrap = Workspace(root=root, config=OdooConf.load(conf_path))
+    clone_mode = services.repositories.clone_mode(full)
     for name in DEFAULT_REPOS:
         action = "Fetching" if services.repositories.exists(bootstrap, name) else "Cloning"
-        out.echo(f"{action} {name} ({'full' if full else 'blobless'})...")
+        out.echo(f"{action} {name} ({clone_mode})...")
         services.repositories.clone_or_fetch(bootstrap, name, full=full)
 
     workspace = services.workspace.resolve()
@@ -83,12 +86,16 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
         except ProcessError as exc:
             if full or not _is_promisor_failure(exc):
                 raise
+            repo_name = _failing_repo_name(exc) or "odoo"
             out.warn(
-                "blobless Odoo checkout failed while fetching missing objects; "
-                "retrying with a full clone"
+                f"blobless {repo_name} checkout failed while fetching missing "
+                "objects; retrying with a full clone"
             )
             services.repositories.replace_with_clone(
-                workspace, "odoo", odoo_repo.url, full=True
+                workspace,
+                repo_name,
+                odoo_repo.url if repo_name == "odoo" else None,
+                full=True,
             )
             result = services.worktrees.create_full(workspace, version, version)
         for skipped in result.skipped:
@@ -133,3 +140,13 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
 def _is_promisor_failure(exc: ProcessError) -> bool:
     output = f"{exc.result.stdout}\n{exc.result.stderr}".lower()
     return "promisor remote" in output or "partial clone" in output
+
+
+def _failing_repo_name(exc: ProcessError) -> str | None:
+    """Repository name from a failed `git -C <repo>.git ...` invocation."""
+    argv = exc.result.argv
+    if len(argv) >= 3 and argv[:2] == ("git", "-C"):
+        name = Path(argv[2]).name
+        if name.endswith(".git"):
+            return name.removesuffix(".git")
+    return None

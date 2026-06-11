@@ -26,7 +26,8 @@ def add(ctx: CliContext, name: str, url: str, full: bool) -> None:
     with `odoo worktree create --addon`.
     """
     workspace = ctx.services.workspace.resolve()
-    ctx.output.echo(f"Cloning {name} ({'full' if full else 'blobless'})...")
+    mode = ctx.services.repositories.clone_mode(full)
+    ctx.output.echo(f"Cloning {name} ({mode})...")
     spec = ctx.services.repositories.add(workspace, name, url, full=full)
     ctx.output.success(f"added repository {spec.name} ({spec.url})")
 

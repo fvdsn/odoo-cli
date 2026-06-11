@@ -212,6 +212,46 @@ class TestCloneOrFetch(RepositoryTestCase):
         clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertNotIn("--filter=blob:none", clone)
 
+    def test_clone_mode_reports_effective_strategy(self):
+        self.allow_git_version("2.54.0")
+        self.assertEqual(self.service.clone_mode(False), "blobless")
+        self.assertEqual(self.service.clone_mode(True), "full")
+
+    def test_clone_mode_is_honest_on_old_git(self):
+        self.allow_git_version("2.39.1")
+        self.assertIn("full", self.service.clone_mode(False))
+        self.assertNotEqual(self.service.clone_mode(False), "blobless")
+
+    def test_old_git_keeps_partial_clone_with_attached_worktrees(self):
+        """P1 regression: a re-run on a working partial workspace with old
+        git must fetch and continue, never replace or refuse."""
+        repo = str(self.root / ".repositories" / "odoo.git")
+        self.runner.expect("git", stdout="")
+        self.runner.expect(
+            "git", "-C", repo, "worktree", "list",
+            stdout=(
+                f"worktree {repo}\nbare\n\n"
+                f"worktree {self.root / '19.0' / 'odoo'}\nHEAD abc123\n"
+            ),
+        )
+        self.runner.expect(
+            "git", "-C", repo, "config", "--get", "remote.origin.promisor",
+            stdout="true\n",
+        )
+        self.runner.expect(
+            "git", "-C", repo, "remote",
+            stdout="https://github.com/odoo/odoo.git\n",
+        )
+        self.allow_git_version("2.39.1")
+
+        spec = self.service.clone_or_fetch(self.workspace, "odoo")
+
+        self.assertEqual(spec.name, "odoo")
+        clones = [c for c in self.runner.calls if c[:2] == ("git", "clone")]
+        self.assertEqual(clones, [])
+        fetches = [c for c in self.runner.calls if "fetch" in c]
+        self.assertEqual(len(fetches), 1)
+
 
 class TestVersions(RepositoryTestCase):
     def test_require_version(self):

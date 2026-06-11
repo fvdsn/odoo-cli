@@ -101,6 +101,24 @@ class TestCreateLinked(LinkedWorktreeTestCase):
             )
         self.assertFalse((self.root / "customer-a").exists())
 
+    def test_failed_addon_checkout_removes_partial_linked_worktree(self):
+        from odoo_cli.util.process import ProcessError
+
+        repo = self.repo_path("customer-a-addons")
+        self.runner.expect(
+            "git", "-C", repo, "worktree", "add", returncode=128,
+            stderr="fatal: could not fetch from promisor remote\n",
+        )
+        with self.assertRaises(ProcessError):
+            self.service.create_linked(
+                self.workspace, "customer-a", "19.0", "19.0",
+                ["customer-a-addons"],
+            )
+        # symlinks were created before the failure; everything is rolled back
+        self.assertFalse((self.root / "customer-a").exists())
+        prunes = [c for c in self.runner.calls if c[-1] == "prune"]
+        self.assertTrue(prunes)
+
 
 class TestAddRepository(LinkedWorktreeTestCase):
     def worktree(self, name) -> Worktree:
@@ -124,11 +142,40 @@ class TestAddRepository(LinkedWorktreeTestCase):
         self.assertIn("19.0", result.reason)
 
     def test_skips_already_present(self):
+        (self.root / "19.0" / "enterprise" / ".git").write_text("gitdir: x\n")
         result = self.service.add_repository(
             self.workspace, self.worktree("19.0"), "enterprise"
         )
         self.assertFalse(result.added)
         self.assertEqual(result.reason, "already present")
+
+    def test_broken_destination_is_reported_not_skipped_silently(self):
+        # a directory without .git (failed earlier add) must not be reported
+        # as already present
+        result = self.service.add_repository(
+            self.workspace, self.worktree("19.0"), "enterprise"
+        )
+        self.assertFalse(result.added)
+        self.assertIn("not a git checkout", result.reason)
+
+    def test_failed_checkout_cleans_destination_and_prunes(self):
+        import shutil as _shutil
+
+        _shutil.rmtree(self.root / "19.0" / "enterprise")
+        repo = self.repo_path("enterprise")
+        self.runner.expect(
+            "git", "-C", repo, "worktree", "add", returncode=128,
+            stderr="fatal: disk full\n",
+            effect=lambda call: Path(call[5]).mkdir(parents=True, exist_ok=True),
+        )
+        from odoo_cli.util.process import ProcessError
+
+        with self.assertRaises(ProcessError):
+            self.service.add_repository(
+                self.workspace, self.worktree("19.0"), "enterprise"
+            )
+        self.assertFalse((self.root / "19.0" / "enterprise").exists())
+        self.assertIn(("git", "-C", repo, "worktree", "prune"), self.runner.calls)
 
     def test_skips_missing_version(self):
         os.rmdir(self.root / "19.0" / "enterprise")
