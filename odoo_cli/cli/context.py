@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from functools import cached_property
 
 from odoo_cli.cli.output import Output
+from odoo_cli.core.target import TargetResolver
 from odoo_cli.core.workspace import WorkspaceResolver
 from odoo_cli.util.process import ProcessRunner
 
@@ -25,6 +26,10 @@ class Services:
     @cached_property
     def workspace(self) -> WorkspaceResolver:
         return WorkspaceResolver()
+
+    @cached_property
+    def targets(self) -> TargetResolver:
+        return TargetResolver(self.workspace)
 
 
 @dataclass
