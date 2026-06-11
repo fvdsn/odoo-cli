@@ -51,6 +51,12 @@ class Git:
         )
         return result.returncode == 0
 
+    def default_branch(self, repo: Path) -> str:
+        result = self._runner.run(
+            ["git", "-C", repo, "symbolic-ref", "--short", "HEAD"]
+        )
+        return result.stdout.strip()
+
     def list_branches(self, repo: Path) -> list[str]:
         result = self._runner.run(
             ["git", "-C", repo, "for-each-ref", "refs/heads", "--format=%(refname:short)"]

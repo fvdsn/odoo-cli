@@ -14,10 +14,11 @@ requested version when the two differ (`odoo worktree create 19.0` checks out
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 
 from odoo_cli.core import release
-from odoo_cli.core.errors import VersionNotFound, WorktreeExists
+from odoo_cli.core.errors import VersionNotFound, WorktreeExists, WorktreeNotFound
 from odoo_cli.core.models import Workspace, Worktree
 from odoo_cli.core.repositories import (
     DEFAULT_REPOS,
@@ -49,7 +50,16 @@ class SkippedRepo:
 class WorktreeCreateResult:
     worktree: Worktree
     checked_out: list[str] = field(default_factory=list)
+    linked: list[str] = field(default_factory=list)
     skipped: list[SkippedRepo] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AddRepoResult:
+    worktree: str
+    added: bool
+    reason: str = ""
 
 
 class WorktreeService:
@@ -96,6 +106,78 @@ class WorktreeService:
             self.git.worktree_add(
                 repo_path, dest, worktree_name, new_branch_from=version
             )
+
+    def create_linked(
+        self,
+        workspace: Workspace,
+        name: str,
+        version: str,
+        source_name: str,
+        addons: list[str],
+    ) -> WorktreeCreateResult:
+        """Linked worktree: standard repos symlinked from the source
+        worktree, addon repositories checked out for real at the root.
+        Nothing is stored: the `odoo/` symlink IS the linked marker."""
+        validate_name(name, kind="worktree name")
+        path = workspace.root / name
+        if path.exists():
+            raise WorktreeExists(f"{path} already exists")
+
+        source = workspace.root / source_name
+        if not (source / "odoo").exists():
+            raise WorktreeNotFound(
+                f"source worktree '{source_name}' does not exist"
+            )
+        source_version = self.detect_version(
+            Worktree(name=source_name, path=source)
+        )
+        if release.normalize_version(version) != source_version:
+            raise VersionNotFound(
+                f"requested version {version} does not match source worktree "
+                f"'{source_name}' (detected {source_version})"
+            )
+
+        # validate every addon before touching the filesystem
+        addon_repos = [self.repositories.get(workspace, a) for a in addons]
+
+        result = WorktreeCreateResult(worktree=Worktree(name=name, path=path))
+        path.mkdir(parents=True)
+        for repo_name in (*DEFAULT_REPOS, *OPTIONAL_REPOS):
+            if (source / repo_name).exists():
+                os.symlink(f"../{source_name}/{repo_name}", path / repo_name)
+                result.linked.append(repo_name)
+
+        for repo in addon_repos:
+            base = version
+            if not self.git.branch_exists(repo.path, base):
+                base = self.git.default_branch(repo.path)
+                result.warnings.append(
+                    f"{repo.name}: no branch '{version}', using default "
+                    f"branch '{base}'"
+                )
+            self._checkout(repo.path, path / repo.name, name, base)
+            result.checked_out.append(repo.name)
+        return result
+
+    def add_repository(
+        self, workspace: Workspace, worktree: Worktree, repo_name: str
+    ) -> AddRepoResult:
+        """Check out an enabled repo into one existing worktree
+        (`odoo repo enable` backfill)."""
+        if worktree.is_linked:
+            return AddRepoResult(
+                worktree.name, False,
+                f"linked worktree (enable acts on its source "
+                f"'{worktree.linked_from}')",
+            )
+        if (worktree.path / repo_name).exists():
+            return AddRepoResult(worktree.name, False, "already present")
+        repo = self.repositories.get(workspace, repo_name)
+        version = self.detect_version(worktree)
+        if not self.git.branch_exists(repo.path, version):
+            return AddRepoResult(worktree.name, False, f"no branch '{version}'")
+        self._checkout(repo.path, worktree.path / repo_name, worktree.name, version)
+        return AddRepoResult(worktree.name, True)
 
     def detect_version(self, worktree: Worktree) -> str:
         """Worktree version from the checked-out source (normalized:

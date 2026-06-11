@@ -15,19 +15,25 @@ def register(group) -> None:
         db,
         init,
         module,
+        repo,
         shell,
         start,
         test,
         update,
+        venv,
         where,
+        worktree,
     )
 
     group.add_command(config.config)
     group.add_command(db.db)
     group.add_command(init.init)
     group.add_command(module.module)
+    group.add_command(repo.repo)
     group.add_command(shell.shell)
     group.add_command(start.start)
     group.add_command(test.test)
     group.add_command(update.update)
+    group.add_command(venv.venv)
     group.add_command(where.where)
+    group.add_command(worktree.worktree)
