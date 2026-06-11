@@ -79,6 +79,19 @@ class ServerNotRunning(OdooCliError):
     pass
 
 
+class StreamedProcessExit(Exception):
+    """A terminal-attached subprocess (server, shell) exited non-zero.
+
+    Not an OdooCliError: the child already wrote its own output, so the CLI
+    propagates the exit code without printing anything. Command adapters
+    raise this instead of calling sys.exit; cli.main translates it.
+    """
+
+    def __init__(self, code: int):
+        super().__init__(f"streamed process exited {code}")
+        self.code = code
+
+
 class ProcessFailed(OdooCliError):
     """A subprocess exited non-zero where success was required."""
 

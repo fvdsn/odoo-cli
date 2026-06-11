@@ -57,9 +57,10 @@ database defaults to the worktree name.
 ## Development
 
 ```bash
-python -m unittest discover            # unit + cli + integration (fast, no network)
+# any Python >= 3.11 (a bare `python` may resolve to an older interpreter)
+python3 -m unittest discover           # unit + cli + integration (fast, no network)
 ODOO_CLI_E2E=1 ODOO_CLI_E2E_ODOO_REPO=~/src/odoo \
-    python -m unittest discover tests/e2e -v   # real-Odoo flows (slow, opt-in)
+    python3 -m unittest discover tests/e2e -v  # real-Odoo flows (slow, opt-in)
 ```
 
 Architecture, layering rules, and the testing strategy are documented in

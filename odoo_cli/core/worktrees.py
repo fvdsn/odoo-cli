@@ -187,16 +187,28 @@ class WorktreeService:
                 f"'{worktree.linked_from}')",
             )
         dest = worktree.path / repo_name
+        repo = self.repositories.get(workspace, repo_name)
         if dest.exists():
-            if dest.is_symlink() or (dest / ".git").exists():
+            if dest.is_symlink():
                 return AddRepoResult(worktree.name, False, "already present")
+            if (dest / ".git").exists():
+                # present, but is it a checkout of the expected repository?
+                common = self.git.common_dir(dest)
+                if common is not None and common.is_relative_to(
+                    repo.path.resolve()
+                ):
+                    return AddRepoResult(worktree.name, False, "already present")
+                return AddRepoResult(
+                    worktree.name, False,
+                    f"{dest} is a checkout of a different repository; "
+                    "move it aside and re-run",
+                )
             # exists but is no usable checkout (e.g. an earlier failed add):
             # don't let it poison every retry, but don't delete user data
             return AddRepoResult(
                 worktree.name, False,
                 f"{dest} exists but is not a git checkout; remove it and re-run",
             )
-        repo = self.repositories.get(workspace, repo_name)
         version = self.detect_version(worktree)
         if not self.git.branch_exists(repo.path, version):
             return AddRepoResult(worktree.name, False, f"no branch '{version}'")

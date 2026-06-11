@@ -57,3 +57,13 @@ class TestDatabases(PostgresTestCase):
         self.runner.expect("psql", stdout="crm\nsale\n\n")
         rows = self.service.sql(self.conf, "db", "SELECT name FROM x")
         self.assertEqual(rows, ["crm", "sale"])
+
+    def test_db_name_literals_are_quoted(self):
+        from odoo_cli.core.postgres import quote_literal
+
+        self.assertEqual(quote_literal("customer-a"), "'customer-a'")
+        self.assertEqual(quote_literal("bad'name"), "'bad''name'")
+        self.runner.expect("psql", stdout="")
+        self.service.db_exists(self.conf, "bad'name")
+        query = self.runner.calls[0][3]
+        self.assertIn("'bad''name'", query)

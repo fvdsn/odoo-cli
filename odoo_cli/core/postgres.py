@@ -22,6 +22,12 @@ _ENV_KEYS = {
 }
 
 
+def quote_literal(value: str) -> str:
+    """SQL string literal with quotes doubled. Names reaching this module are
+    already validated (TargetResolver), this is the second line of defense."""
+    return "'" + value.replace("'", "''") + "'"
+
+
 class PostgresService:
     def __init__(
         self,
@@ -54,7 +60,7 @@ class PostgresService:
         rows = self.sql(
             conf,
             "postgres",
-            f"SELECT 1 FROM pg_database WHERE datname = '{name}'",
+            f"SELECT 1 FROM pg_database WHERE datname = {quote_literal(name)}",
         )
         return bool(rows)
 
@@ -73,7 +79,8 @@ class PostgresService:
             conf,
             "postgres",
             "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
-            f"WHERE datname = '{name}' AND pid <> pg_backend_pid()",
+            f"WHERE datname = {quote_literal(name)} "
+            "AND pid <> pg_backend_pid()",
         )
         try:
             self.runner.run(["dropdb", name], extra_env=self.env(conf))

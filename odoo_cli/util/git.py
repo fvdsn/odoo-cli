@@ -117,6 +117,23 @@ class Git:
             argv += [dest, branch]
         self._runner.run(argv)
 
+    def common_dir(self, checkout: Path) -> Path | None:
+        """The git common dir of a checkout (the backing repository), or None
+        when the path is not a usable git checkout."""
+        result = self._runner.run(
+            ["git", "-C", checkout, "rev-parse", "--git-common-dir"],
+            check=False,
+        )
+        if result.returncode != 0:
+            return None
+        raw = result.stdout.strip()
+        if not raw:
+            return None
+        path = Path(raw)
+        if not path.is_absolute():
+            path = checkout / path
+        return path.resolve()
+
     def worktree_prune(self, repo: Path) -> None:
         self._runner.run(["git", "-C", repo, "worktree", "prune"])
 

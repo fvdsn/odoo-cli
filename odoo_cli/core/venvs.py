@@ -54,6 +54,10 @@ class VenvService:
         path = self.venv_path(workspace, worktree)
         if (path / READY_MARKER).is_file() and self.python_path(path).exists():
             return VenvResult(path=path, created=False)
+        if path.exists():
+            # incomplete (no ready marker): a failed creation may have left
+            # stale state behind; recreate from scratch
+            shutil.rmtree(path)
         self._create(path, worktree)
         return VenvResult(path=path, created=True)
 

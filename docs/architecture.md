@@ -709,10 +709,10 @@ tests/
     fixtures/       small workspace/repository/addon fixtures
 ```
 
-Default command:
+Default command (any Python >= 3.11; a bare `python` may resolve older):
 
 ```text
-python -m unittest discover
+python3 -m unittest discover
 ```
 
 ### Unit tests

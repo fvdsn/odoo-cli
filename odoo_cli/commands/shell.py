@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import sys
-
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
+from odoo_cli.core.errors import StreamedProcessExit
 
 
 @click.command()
@@ -25,4 +24,4 @@ def shell(
         return
     exit_code = ctx.services.shell.interactive(target)
     if exit_code != 0:
-        sys.exit(exit_code)
+        raise StreamedProcessExit(exit_code)

@@ -142,12 +142,30 @@ class TestAddRepository(LinkedWorktreeTestCase):
         self.assertIn("19.0", result.reason)
 
     def test_skips_already_present(self):
-        (self.root / "19.0" / "enterprise" / ".git").write_text("gitdir: x\n")
+        dest = self.root / "19.0" / "enterprise"
+        (dest / ".git").write_text("gitdir: x\n")
+        self.runner.expect(
+            "git", "-C", str(dest), "rev-parse", "--git-common-dir",
+            stdout=f"{self.repo_path('enterprise')}\n",
+        )
         result = self.service.add_repository(
             self.workspace, self.worktree("19.0"), "enterprise"
         )
         self.assertFalse(result.added)
         self.assertEqual(result.reason, "already present")
+
+    def test_checkout_of_a_different_repository_is_reported(self):
+        dest = self.root / "19.0" / "enterprise"
+        (dest / ".git").write_text("gitdir: x\n")
+        self.runner.expect(
+            "git", "-C", str(dest), "rev-parse", "--git-common-dir",
+            stdout=f"{self.repo_path('customer-a-addons')}\n",
+        )
+        result = self.service.add_repository(
+            self.workspace, self.worktree("19.0"), "enterprise"
+        )
+        self.assertFalse(result.added)
+        self.assertIn("different repository", result.reason)
 
     def test_broken_destination_is_reported_not_skipped_silently(self):
         # a directory without .git (failed earlier add) must not be reported

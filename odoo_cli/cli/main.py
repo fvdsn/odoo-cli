@@ -8,7 +8,7 @@ from __future__ import annotations
 from odoo_cli import __version__, commands
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
-from odoo_cli.core.errors import OdooCliError
+from odoo_cli.core.errors import OdooCliError, StreamedProcessExit
 from odoo_cli.util.process import ProcessError
 
 
@@ -34,6 +34,9 @@ def main(argv: list[str] | None = None) -> int:
     except click.exceptions.ClickException as exc:
         exc.show()
         return exc.exit_code
+    except StreamedProcessExit as exc:
+        # the streamed child already produced its own output
+        return exc.code
     except OdooCliError as exc:
         click.secho(f"error: {exc.message}", fg="red", err=True)
         if exc.hint:

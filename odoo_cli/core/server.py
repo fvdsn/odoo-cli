@@ -106,7 +106,11 @@ class ServerService:
         return self._allocate_fresh(target, previous=existing)
 
     def preview_ports(self, target: Target) -> Ports:
-        """The ports a start would use, without reserving anything."""
+        """The ports a start would likely use, without reserving anything.
+
+        Unreserved candidates are an estimate: no bind check happens here
+        (`odoo where` must not touch sockets), so a foreign process squatting
+        a candidate port makes the real allocation pick the next one."""
         existing = self.store.read_ports(target)
         if existing:
             return existing

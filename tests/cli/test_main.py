@@ -57,3 +57,14 @@ class TestErrorTranslation(unittest.TestCase):
         self._register("ok", lambda: None)
         code, _ = self._run(["ok"])
         self.assertEqual(code, 0)
+
+    def test_streamed_process_exit_propagates_code_silently(self):
+        from odoo_cli.core.errors import StreamedProcessExit
+
+        def boom():
+            raise StreamedProcessExit(7)
+
+        self._register("streamed", boom)
+        code, stderr = self._run(["streamed"])
+        self.assertEqual(code, 7)
+        self.assertEqual(stderr, "")  # the child already printed its output

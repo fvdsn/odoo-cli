@@ -100,13 +100,18 @@ class TestEnsure(VenvTestCase):
         self.assertFalse(result.created)
         self.assertEqual(self.runner.calls, [])
 
-    def test_incomplete_venv_is_recreated(self):
+    def test_incomplete_venv_is_recreated_from_scratch(self):
         self.available = {"uv": "/usr/bin/uv"}
         self.runner.expect("uv", stdout="")
         wt = self.worktree()
         venv = self.root / ".venvs" / "19.0"
         (venv / "bin").mkdir(parents=True)
         (venv / "bin" / "python").write_text("")  # no ready marker
+        stale = venv / "lib" / "stale-half-installed-package"
+        stale.mkdir(parents=True)
         result = self.service().ensure(self.workspace, wt)
         self.assertTrue(result.created)
         self.assertTrue(self.runner.calls)
+        # the old directory was removed, not built over
+        self.assertFalse(stale.exists())
+        self.assertFalse((venv / "bin" / "python").exists())

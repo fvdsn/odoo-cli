@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import sys
-
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
+from odoo_cli.core.errors import StreamedProcessExit
 
 
 @click.command()
@@ -56,4 +55,4 @@ def start(
     out.echo("Ctrl-C to stop")
     code = services.server.run_foreground(command)
     if code not in (0, 130):  # 130: Ctrl-C
-        sys.exit(code)
+        raise StreamedProcessExit(code)

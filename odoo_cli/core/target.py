@@ -34,13 +34,15 @@ class TargetResolver:
     def resolve(self, worktree: str | None = None, db: str | None = None) -> Target:
         workspace = self.workspaces.resolve()
         resolved = self._resolve_worktree(workspace, worktree)
-        if db is not None:
-            # db names reach psql command lines and SQL literals
-            validate_name(db, kind="database name")
+        database = db or resolved.name
+        # db names reach psql command lines and SQL literals; the default
+        # (worktree name) needs this too — discovery trusts the filesystem,
+        # so a manually created directory may carry any character
+        validate_name(database, kind="database name")
         return Target(
             workspace=workspace,
             worktree=resolved,
-            database=db or resolved.name,
+            database=database,
         )
 
     def _resolve_worktree(self, workspace: Workspace, name: str | None) -> Worktree:

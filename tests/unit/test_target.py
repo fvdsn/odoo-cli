@@ -117,3 +117,12 @@ class TestDatabaseResolution(TargetTestCase):
         make_worktree(self.root, "19.0", version="19.0")
         target = self.resolver().resolve(db="customer-a")
         self.assertEqual(target.database, "customer-a")
+
+    def test_default_db_from_unsafe_worktree_name_is_rejected(self):
+        # discovery trusts the filesystem; a manually created directory can
+        # carry characters that must never reach SQL literals
+        from odoo_cli.core.errors import InvalidWorktreeName
+
+        make_worktree(self.root, "bad'name", version="19.0")
+        with self.assertRaises(InvalidWorktreeName):
+            self.resolver().resolve()

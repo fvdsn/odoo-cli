@@ -55,6 +55,6 @@ def where(ctx: CliContext, worktree: str | None, db: str | None, as_json: bool) 
     out.echo(f"venv:        {data['venv']}")
     out.echo(f"odoo.conf:   {data['odoo_conf']}")
     out.echo(f"addons path: {', '.join(data['addons_path'])}")
-    ports_note = "" if stored else " (allocated on first start)"
+    ports_note = "" if stored else " (estimate; allocated on first start)"
     out.echo(f"ports:       http={ports.http} gevent={ports.gevent}{ports_note}")
     out.echo(f"command:     {' '.join(data['command'])}")
