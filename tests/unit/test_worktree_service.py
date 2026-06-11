@@ -7,6 +7,7 @@ from odoo_cli.core.models import Workspace
 from odoo_cli.core.repositories import RepositoryService
 from odoo_cli.core.worktrees import WorktreeService
 from odoo_cli.util.git import Git
+from odoo_cli.util.process import ProcessError
 from tests.fixtures.process import FakeProcessRunner
 from tests.fixtures.workspace import make_workspace
 
@@ -99,3 +100,28 @@ class TestCreateFull(WorktreeServiceTestCase):
         (ws.root / "19.0").mkdir()
         with self.assertRaises(WorktreeExists):
             self.service.create_full(ws, "19.0", "19.0")
+
+    def test_failed_checkout_cleans_partial_directory_and_prunes(self):
+        ws = self.workspace()
+        self.allow_remote_urls()
+
+        def fail_after_partial_checkout(call):
+            dest = Path(call[5])
+            dest.mkdir(parents=True, exist_ok=True)
+            (dest / ".git").write_text("gitdir: broken\n")
+
+        self.runner.expect(
+            "git",
+            "-C",
+            self.repo_path(ws, "odoo"),
+            "worktree",
+            "add",
+            returncode=128,
+            effect=fail_after_partial_checkout,
+        )
+
+        with self.assertRaises(ProcessError):
+            self.service.create_full(ws, "19.0", "19.0")
+
+        self.assertFalse((ws.root / "19.0").exists())
+        self.assertTrue(any(c[-2:] == ("worktree", "prune") for c in self.runner.calls))

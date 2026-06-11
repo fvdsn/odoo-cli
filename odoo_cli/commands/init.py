@@ -12,6 +12,7 @@ from odoo_cli.core.errors import PostgresError
 from odoo_cli.core.models import Workspace, Worktree
 from odoo_cli.core.odoo_conf import OdooConf
 from odoo_cli.core.repositories import DEFAULT_REPOS
+from odoo_cli.util.process import ProcessError
 
 
 @click.command()
@@ -75,16 +76,46 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
     odoo_repo = services.repositories.get(workspace, "odoo")
     version = version or services.repositories.latest_stable_version(odoo_repo)
 
-    worktree_path = workspace.root / version
-    if worktree_path.exists():
-        out.echo(f"Worktree {version} already exists, leaving it untouched")
-        worktree = Worktree(name=version, path=worktree_path)
-    else:
+    def create_initial_worktree() -> Worktree:
         out.echo(f"Creating worktree {version}...")
-        result = services.worktrees.create_full(workspace, version, version)
+        try:
+            result = services.worktrees.create_full(workspace, version, version)
+        except ProcessError as exc:
+            if full or not _is_promisor_failure(exc):
+                raise
+            out.warn(
+                "blobless Odoo checkout failed while fetching missing objects; "
+                "retrying with a full clone"
+            )
+            services.repositories.replace_with_clone(
+                workspace, "odoo", odoo_repo.url, full=True
+            )
+            result = services.worktrees.create_full(workspace, version, version)
         for skipped in result.skipped:
             out.warn(f"skipped {skipped.name}: {skipped.reason}")
-        worktree = result.worktree
+        return result.worktree
+
+    worktree_path = workspace.root / version
+    if worktree_path.exists():
+        worktree = Worktree(name=version, path=worktree_path)
+        if services.worktrees.is_valid(worktree):
+            out.echo(f"Worktree {version} already exists, leaving it untouched")
+            for repo_name in DEFAULT_REPOS:
+                if not (worktree.path / repo_name).exists():
+                    out.echo(f"Adding missing {repo_name} checkout...")
+                    result = services.worktrees.add_repository(
+                        workspace, worktree, repo_name
+                    )
+                    if not result.added:
+                        out.warn(f"skipped {repo_name}: {result.reason}")
+        elif services.worktrees.can_repair_incomplete_full(workspace, worktree):
+            out.warn(f"Worktree {version} is incomplete; recreating it")
+            services.worktrees.remove_incomplete_full(workspace, worktree)
+            worktree = create_initial_worktree()
+        else:
+            services.worktrees.remove_incomplete_full(workspace, worktree)
+    else:
+        worktree = create_initial_worktree()
 
     out.echo("Setting up the virtual environment...")
     services.venvs.ensure(workspace, worktree)
@@ -97,3 +128,8 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
 
     out.success(f"Workspace ready at {workspace.root}")
     out.echo(f"Next: cd {worktree.path} && odoo start")
+
+
+def _is_promisor_failure(exc: ProcessError) -> bool:
+    output = f"{exc.result.stdout}\n{exc.result.stderr}".lower()
+    return "promisor remote" in output or "partial clone" in output

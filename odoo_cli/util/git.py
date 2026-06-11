@@ -10,10 +10,35 @@ from pathlib import Path
 
 from odoo_cli.util.process import ProcessRunner
 
+MIN_BLOBLESS_GIT_VERSION = (2, 40, 0)
+
 
 class Git:
     def __init__(self, runner: ProcessRunner):
         self._runner = runner
+
+    def version(self) -> tuple[int, int, int] | None:
+        result = self._runner.run(["git", "--version"], check=False)
+        if result.returncode != 0:
+            return None
+        for part in result.stdout.split():
+            bits = part.split(".")
+            if len(bits) < 2:
+                continue
+            numbers = []
+            for bit in bits[:3]:
+                if not bit.isdigit():
+                    break
+                numbers.append(int(bit))
+            if len(numbers) >= 2:
+                while len(numbers) < 3:
+                    numbers.append(0)
+                return tuple(numbers[:3])
+        return None
+
+    def supports_reliable_blobless_clone(self) -> bool:
+        version = self.version()
+        return version is not None and version >= MIN_BLOBLESS_GIT_VERSION
 
     def clone_bare(self, url: str, dest: Path, *, blobless: bool = True) -> None:
         argv: list[str | Path] = ["git", "clone", "--bare"]
@@ -34,6 +59,20 @@ class Git:
                 "+refs/heads/*:refs/heads/*",
                 "--prune",
             ]
+        )
+
+    def config_get(self, repo: Path, key: str) -> str | None:
+        result = self._runner.run(
+            ["git", "-C", repo, "config", "--get", key], check=False
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout.strip() or None
+
+    def is_partial_clone(self, repo: Path) -> bool:
+        return (
+            self.config_get(repo, "remote.origin.promisor") == "true"
+            or self.config_get(repo, "remote.origin.partialclonefilter") is not None
         )
 
     def remote_url(self, repo: Path) -> str | None:
@@ -77,3 +116,14 @@ class Git:
         else:
             argv += [dest, branch]
         self._runner.run(argv)
+
+    def worktree_prune(self, repo: Path) -> None:
+        self._runner.run(["git", "-C", repo, "worktree", "prune"])
+
+    def worktree_paths(self, repo: Path) -> list[Path]:
+        result = self._runner.run(["git", "-C", repo, "worktree", "list", "--porcelain"])
+        paths = []
+        for line in result.stdout.splitlines():
+            if line.startswith("worktree "):
+                paths.append(Path(line.removeprefix("worktree ")))
+        return paths

@@ -4,6 +4,7 @@ from pathlib import Path
 
 from odoo_cli.core.errors import (
     InvalidWorktreeName,
+    OdooCliError,
     RepositoryExists,
     RepositoryNotFound,
     VersionNotFound,
@@ -25,6 +26,9 @@ class RepositoryTestCase(unittest.TestCase):
         self.runner = FakeProcessRunner()
         self.service = RepositoryService(Git(self.runner))
 
+    def allow_git_version(self, version="2.54.0"):
+        self.runner.expect("git", "--version", stdout=f"git version {version}\n")
+
 
 class TestListing(RepositoryTestCase):
     def test_list_reads_directory(self):
@@ -45,11 +49,13 @@ class TestListing(RepositoryTestCase):
 class TestAdd(RepositoryTestCase):
     def test_add_clones_blobless_by_default(self):
         self.runner.expect("git", stdout="")
+        self.allow_git_version()
         self.service.add(
             self.workspace, "customer-a-addons", "git@example.com:a.git"
         )
+        clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertEqual(
-            self.runner.calls[0],
+            clone,
             (
                 "git",
                 "clone",
@@ -62,10 +68,21 @@ class TestAdd(RepositoryTestCase):
 
     def test_add_full_clone(self):
         self.runner.expect("git", stdout="")
+        self.allow_git_version()
         self.service.add(
             self.workspace, "customer-a-addons", "git@example.com:a.git", full=True
         )
-        self.assertNotIn("--filter=blob:none", self.runner.calls[0])
+        clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
+        self.assertNotIn("--filter=blob:none", clone)
+
+    def test_add_uses_full_clone_with_old_git(self):
+        self.runner.expect("git", stdout="")
+        self.allow_git_version("2.39.1")
+        self.service.add(
+            self.workspace, "customer-a-addons", "git@example.com:a.git"
+        )
+        clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
+        self.assertNotIn("--filter=blob:none", clone)
 
     def test_add_rejects_builtin_names(self):
         with self.assertRaises(RepositoryExists) as cm:
@@ -80,6 +97,120 @@ class TestAdd(RepositoryTestCase):
         for bad in ("", "a/b", "a b", ".repositories"):
             with self.assertRaises(InvalidWorktreeName):
                 self.service.add(self.workspace, bad, "git@example.com:x.git")
+
+
+class TestCloneOrFetch(RepositoryTestCase):
+    def test_full_replaces_existing_partial_clone_without_worktrees(self):
+        old_marker = self.root / ".repositories" / "odoo.git" / "old"
+        old_marker.write_text("partial\n")
+
+        def clone_effect(call):
+            Path(call[-1]).mkdir(parents=True, exist_ok=True)
+
+        self.runner.expect("git", "clone", effect=clone_effect)
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "worktree",
+            "list",
+            stdout=f"worktree {self.root / '.repositories' / 'odoo.git'}\nbare\n",
+        )
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "config",
+            "--get",
+            "remote.origin.promisor",
+            stdout="true\n",
+        )
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "remote",
+            stdout="https://github.com/odoo/odoo.git\n",
+        )
+        self.allow_git_version()
+
+        self.service.clone_or_fetch(self.workspace, "odoo", full=True)
+
+        clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
+        self.assertNotIn("--filter=blob:none", clone)
+        self.assertFalse(old_marker.exists())
+        self.assertTrue((self.root / ".repositories" / "odoo.git").is_dir())
+
+    def test_full_refuses_to_replace_repository_with_attached_worktrees(self):
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "worktree",
+            "list",
+            stdout=(
+                f"worktree {self.root / '.repositories' / 'odoo.git'}\n"
+                "bare\n\n"
+                f"worktree {self.root / '19.0' / 'odoo'}\n"
+                "HEAD abc123\n"
+            ),
+        )
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "config",
+            "--get",
+            "remote.origin.promisor",
+            stdout="true\n",
+        )
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "remote",
+            stdout="https://github.com/odoo/odoo.git\n",
+        )
+        self.allow_git_version()
+
+        with self.assertRaises(OdooCliError):
+            self.service.clone_or_fetch(self.workspace, "odoo", full=True)
+
+    def test_old_git_replaces_existing_partial_clone_with_full_clone(self):
+        def clone_effect(call):
+            Path(call[-1]).mkdir(parents=True, exist_ok=True)
+
+        self.runner.expect("git", "clone", effect=clone_effect)
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "worktree",
+            "list",
+            stdout=f"worktree {self.root / '.repositories' / 'odoo.git'}\nbare\n",
+        )
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "config",
+            "--get",
+            "remote.origin.promisor",
+            stdout="true\n",
+        )
+        self.runner.expect(
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "remote",
+            stdout="https://github.com/odoo/odoo.git\n",
+        )
+        self.allow_git_version("2.39.1")
+
+        self.service.clone_or_fetch(self.workspace, "odoo")
+
+        clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
+        self.assertNotIn("--filter=blob:none", clone)
 
 
 class TestVersions(RepositoryTestCase):

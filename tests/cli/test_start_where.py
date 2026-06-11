@@ -54,7 +54,10 @@ class TestStart(CommandTestCase):
         self.script()
         result = self.invoke("start")
         self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Starting Odoo: worktree=19.0 database=19.0", result.output)
+        self.assertIn("URL:", result.output)
         self.assertIn("http://localhost:8069", result.output)
+        self.assertIn("gevent: 8072", result.output)
         ports_file = self.root / ".run" / "19.0" / "19.0" / "ports"
         self.assertEqual(ports_file.read_text(), "http=8069\ngevent=8072\n")
         argv = self.runner.stream_calls[0]

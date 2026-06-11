@@ -8,9 +8,13 @@ remote. Nothing is stored elsewhere.
 from __future__ import annotations
 
 import re
+import shutil
+import tempfile
+from pathlib import Path
 
 from odoo_cli.core.errors import (
     InvalidWorktreeName,
+    OdooCliError,
     RepositoryExists,
     RepositoryHasNoRemote,
     RepositoryNotFound,
@@ -94,8 +98,11 @@ class RepositoryService:
     ) -> RepositorySpec:
         """Clone a repo, or fetch it when already present (`repo enable`,
         `odoo init` re-runs)."""
+        effective_full = full or not self.git.supports_reliable_blobless_clone()
         if self.exists(workspace, name):
             spec = self.get(workspace, name)
+            if effective_full and self.git.is_partial_clone(spec.path):
+                return self.replace_with_clone(workspace, name, spec.url, full=True)
             if spec.url is None:
                 raise RepositoryHasNoRemote(
                     f"repository '{name}' has no origin remote; cannot fetch"
@@ -105,13 +112,56 @@ class RepositoryService:
         resolved_url = url or BUILTIN_URLS.get(name)
         if resolved_url is None:
             raise RepositoryNotFound(f"no URL known for repository '{name}'")
-        return self._clone(workspace, name, resolved_url, full=full)
+        return self._clone(workspace, name, resolved_url, full=effective_full)
 
     def _clone(self, workspace: Workspace, name: str, url: str, *, full: bool) -> RepositorySpec:
         workspace.repositories_dir.mkdir(parents=True, exist_ok=True)
         path = workspace.repositories_dir / f"{name}.git"
-        self.git.clone_bare(url, path, blobless=not full)
+        blobless = not full and self.git.supports_reliable_blobless_clone()
+        self.git.clone_bare(url, path, blobless=blobless)
         return RepositorySpec(name=name, path=path, url=url)
+
+    def replace_with_clone(
+        self,
+        workspace: Workspace,
+        name: str,
+        url: str | None = None,
+        *,
+        full: bool,
+    ) -> RepositorySpec:
+        """Replace a bare repository only when no checkout worktrees depend on it."""
+        path = workspace.repositories_dir / f"{name}.git"
+        resolved_url = url
+        if resolved_url is None and path.is_dir():
+            resolved_url = self.git.remote_url(path)
+        resolved_url = resolved_url or BUILTIN_URLS.get(name)
+        if resolved_url is None:
+            raise RepositoryHasNoRemote(
+                f"repository '{name}' has no origin remote; cannot reclone"
+            )
+        if path.is_dir() and self._has_checkout_worktrees(path):
+            raise OdooCliError(
+                f"cannot replace repository '{name}' while worktrees exist",
+                hint="remove those worktrees first, or clone a fresh workspace",
+            )
+
+        workspace.repositories_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(
+            prefix=f".{name}-reclone-", dir=workspace.repositories_dir
+        ) as tmp:
+            replacement = Path(tmp) / f"{name}.git"
+            self.git.clone_bare(resolved_url, replacement, blobless=not full)
+            if path.exists():
+                shutil.rmtree(path)
+            replacement.rename(path)
+        return RepositorySpec(name=name, path=path, url=resolved_url)
+
+    def _has_checkout_worktrees(self, repo_path: Path) -> bool:
+        repo = repo_path.resolve()
+        for path in self.git.worktree_paths(repo_path):
+            if path.resolve() != repo:
+                return True
+        return False
 
     def has_version(self, repo: RepositorySpec, version: str) -> bool:
         return self.git.branch_exists(repo.path, version)

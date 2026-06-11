@@ -49,9 +49,11 @@ def start(
         target, python=python, ports=ports, prod=prod
     )
     out.echo(
-        f"Starting Odoo ({target.worktree.name}/{target.database}) on "
-        f"http://localhost:{ports.http} — Ctrl-C to stop"
+        f"Starting Odoo: worktree={target.worktree.name} "
+        f"database={target.database}"
     )
+    out.echo(f"URL: http://localhost:{ports.http} (gevent: {ports.gevent})")
+    out.echo("Ctrl-C to stop")
     code = services.server.run_foreground(command)
     if code not in (0, 130):  # 130: Ctrl-C
         sys.exit(code)

@@ -51,6 +51,7 @@ class InitCommandTestCase(unittest.TestCase):
 
         # broad fallback first: later, more specific registrations win
         self.runner.expect("git", stdout="")  # remote_url, rev-parse, fetch
+        self.runner.expect("git", "--version", stdout="git version 2.54.0\n")
         self.runner.expect("git", "clone", effect=clone_effect)
         repos = self.root / ".repositories"
         for repo in ("odoo.git", "documentation.git"):
@@ -135,6 +136,64 @@ class TestInit(InitCommandTestCase):
         self.assertEqual(len(fetches), 2)
         self.assertEqual(clones, [])
         self.assertIn("already exists", result.output)
+
+    def test_rerun_repairs_incomplete_worktree(self):
+        self.script_happy_path()
+        incomplete = self.root / "19.0" / "odoo"
+        incomplete.mkdir(parents=True)
+        (incomplete / ".git").write_text("gitdir: broken\n")
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertTrue((self.root / "19.0" / "odoo" / "odoo" / "release.py").is_file())
+        self.assertIn("incomplete; recreating", result.output)
+        self.assertTrue(any(c[-2:] == ("worktree", "prune") for c in self.runner.calls))
+
+    def test_blobless_promisor_checkout_failure_retries_with_full_clone(self):
+        self.script_happy_path()
+        prefix = (
+            "git",
+            "-C",
+            str(self.root / ".repositories" / "odoo.git"),
+            "worktree",
+            "add",
+        )
+
+        def fail_once(call):
+            # Remove this one-shot failure so the retry uses script_happy_path's
+            # normal worktree side effect.
+            for index, (registered, result, _effect) in enumerate(self.runner._scripts):
+                if registered == prefix and result.returncode == 128:
+                    self.runner._scripts.pop(index)
+                    break
+            Path(call[5]).mkdir(parents=True, exist_ok=True)
+
+        self.runner.expect(
+            *prefix,
+            returncode=128,
+            stderr="fatal: could not fetch abc from promisor remote\n",
+            effect=fail_once,
+        )
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("retrying with a full clone", result.output)
+        clones = [c for c in self.runner.calls if c[:2] == ("git", "clone")]
+        self.assertGreaterEqual(len(clones), 3)
+        self.assertNotIn("--filter=blob:none", clones[-1])
+
+    def test_rerun_does_not_delete_unrecognized_existing_directory(self):
+        self.script_happy_path()
+        worktree = self.root / "19.0"
+        worktree.mkdir(parents=True)
+        (worktree / "notes.txt").write_text("keep me\n")
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertTrue((worktree / "notes.txt").is_file())
 
     def test_connection_failure_warns_but_completes(self):
         self.script_happy_path()
