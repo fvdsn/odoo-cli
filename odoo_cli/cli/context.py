@@ -6,8 +6,11 @@ from dataclasses import dataclass, field
 from functools import cached_property
 
 from odoo_cli.cli.output import Output
+from odoo_cli.core.repositories import RepositoryService
 from odoo_cli.core.target import TargetResolver
 from odoo_cli.core.workspace import WorkspaceResolver
+from odoo_cli.core.worktrees import WorktreeService
+from odoo_cli.util.git import Git
 from odoo_cli.util.process import ProcessRunner
 
 
@@ -30,6 +33,18 @@ class Services:
     @cached_property
     def targets(self) -> TargetResolver:
         return TargetResolver(self.workspace)
+
+    @cached_property
+    def git(self) -> Git:
+        return Git(self.process)
+
+    @cached_property
+    def repositories(self) -> RepositoryService:
+        return RepositoryService(self.git)
+
+    @cached_property
+    def worktrees(self) -> WorktreeService:
+        return WorktreeService(self.git, self.repositories)
 
 
 @dataclass

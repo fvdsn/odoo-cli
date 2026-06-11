@@ -53,12 +53,23 @@ def make_worktree(
     return path
 
 
-def version_release_py(version: str) -> str:
-    series = version.replace("saas~", "").replace("saas-", "")
-    return (
-        f"version_info = ({series.split('.')[0]}, 0, 0, 'final', 0, '')\n"
-        f"version = '{version}'\n"
-        f"serie = '{version}'\n"
-        "MIN_PY_VERSION = (3, 10)\n"
-        "MAX_PY_VERSION = (3, 13)\n"
-    )
+def version_release_py(
+    version: str,
+    py_min: tuple[int, int] | None = (3, 10),
+    py_max: tuple[int, int] | None = (3, 13),
+) -> str:
+    """Mimic odoo/odoo/release.py for a version like `19.0` or `saas-19.4`."""
+    serie = version.replace("saas-", "saas~")
+    major, minor = serie.rsplit(".", 1)
+    major_repr = major if major.isdigit() else repr(major)
+    lines = [
+        "FINAL, ALPHA = 'final', 'alpha'",
+        f"version_info = ({major_repr}, {int(minor)}, 0, FINAL, 0, '')",
+        "serie = series = '.'.join(str(v) for v in version_info[:2])",
+        "version = serie",
+    ]
+    if py_min:
+        lines.append(f"MIN_PY_VERSION = {py_min!r}")
+    if py_max:
+        lines.append(f"MAX_PY_VERSION = {py_max!r}")
+    return "\n".join(lines) + "\n"
