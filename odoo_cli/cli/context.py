@@ -7,6 +7,7 @@ from functools import cached_property
 from typing import Mapping
 
 from odoo_cli.cli.output import Output
+from odoo_cli.core.config_service import ConfigService
 from odoo_cli.core.database import DatabaseService
 from odoo_cli.core.modules import ModuleService
 from odoo_cli.core.odoo_bin import OdooBinService
@@ -91,6 +92,10 @@ class Services:
     @cached_property
     def shell(self) -> ShellService:
         return ShellService(self.database, self.odoo_bin, self.venvs, self.process)
+
+    @cached_property
+    def config(self) -> ConfigService:
+        return ConfigService(self.workspace, self.repositories)
 
 
 @dataclass
