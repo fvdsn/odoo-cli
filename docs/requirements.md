@@ -50,7 +50,7 @@
         saas-19.4/              <- e.g. a master checkout; `~` normalized to `-`
     .run/                       <- ephemeral runtime state, per server instance
         master/                 <- worktree name
-            odoo-master/        <- default db
+            master/             <- default db
                 ports           <- v1: only this file (foreground server)
                 pid             <- v2 (background lifecycle)
                 log             <- v2
@@ -61,7 +61,7 @@
                 ...             <- pid/log/socket/args are v2
     .data/                      <- v2: persistent Odoo data, per database
         master/                 <- v1 uses odoo-bin's default data_dir instead
-            odoo-master/            (shared by all dbs/servers; not isolated)
+            master/                 (shared by all dbs/servers; not isolated)
                 filestore/
             customer-a/
                 filestore/
@@ -170,7 +170,7 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
  - per-instance values are NOT written to `odoo.conf`; the CLI computes them and
    passes them as CLI args, which override the conf file:
    - `addons_path` (per worktree, auto-discovered)
-   - `-d odoo-{worktree}` (per worktree+db)
+   - `-d {worktree}` (per worktree+db)
    - allocated `http_port` / `gevent_port` (per worktree+db)
    - `data_dir` is NOT passed in v1 — odoo-bin uses its default location, shared
      by all dbs/servers; per-instance `--data-dir` → `.data/{worktree}/{db}` is v2
@@ -307,7 +307,7 @@ creation, at which point explicit `-c` becomes unnecessary on those versions —
    it is never written to `odoo.conf`
 
 ## Database names managed by convention
- - default db name derived from worktree name: `odoo-{worktree}`
+ - default db name is the worktree name: `{worktree}`
  - override with `--db` flag when needed (e.g. customer databases)
  - no need to pass db name in most commands
  - commands that need an initialized database ensure it first: a missing target
@@ -409,7 +409,7 @@ creation, at which point explicit `-c` becomes unnecessary on those versions —
 
 ## Target flags
  - `-w` / `--worktree` — specify which worktree to target
- - `-d` / `--db` — specify which database to target (defaults to `odoo-{worktree}`)
+ - `-d` / `--db` — specify which database to target (defaults to `{worktree}`)
  - both are optional on all commands — omit to infer from context
 
 ## Target resolution order
@@ -417,7 +417,7 @@ creation, at which point explicit `-c` becomes unnecessary on those versions —
  - cwd detection uses the logical path (`$PWD`, validated against `getcwd()`):
    inside a linked worktree's symlinked `odoo/`, the physical path points at the
    source worktree, but the command must target the linked worktree
- - database: explicit `--db` → default `odoo-{worktree}`
+ - database: explicit `--db` → default `{worktree}`
  - if worktree resolution fails because multiple worktrees exist, print an explicit error:
    - explain that no default worktree is configured
    - list available worktrees
@@ -608,7 +608,7 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
 
 ### `odoo test $MODULE [-t $TAG]` [v1]
  - creates or reuses a test db and runs the tests
- - the test db is named `{database}-test` (default: `odoo-{worktree}-test`);
+ - the test db is named `{database}-test` (default: `{worktree}-test`);
    derived by convention, never stored
  - only outputs final test results by default
  - `$MODULE`: module name, `installed` (modules installed in the database), or `all` (every addon)

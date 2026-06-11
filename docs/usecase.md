@@ -55,7 +55,7 @@ Expected workspace setup:
         19.0/
     .run/
         19.0/
-            odoo-19.0/
+            19.0/
                 ports
     19.0/
         odoo/
@@ -83,10 +83,10 @@ Source of truth:
 - actual Odoo version is inferred from `~/odoo/19.0/odoo/odoo/release.py`
 - enabled repos are exactly those present in `.repositories/` (here: odoo, documentation)
 - target worktree resolves to `19.0` because it is the only worktree
-- default database is `odoo-19.0`
+- default database is `19.0`
 - the database starts empty; `odoo module install crm` installs CRM
 - installed modules are read back from the database, not from config
-- assigned ports are in `.run/19.0/odoo-19.0/ports`
+- assigned ports are in `.run/19.0/19.0/ports`
 
 ## 2. Daily development in one worktree
 
@@ -110,7 +110,7 @@ Expected workspace setup:
 ~/odoo/
     .run/
         19.0/
-            odoo-19.0/
+            19.0/
                 ports
     19.0/
         odoo/
@@ -121,8 +121,8 @@ Source of truth:
 
 - target worktree resolves to `19.0` when it is still the only worktree
 - once multiple worktrees exist, run from inside the target worktree or pass `--worktree`
-- target database defaults to `odoo-19.0`
-- the assigned port is in `.run/19.0/odoo-19.0/ports`
+- target database defaults to `19.0`
+- the assigned port is in `.run/19.0/19.0/ports`
 - `odoo update` and `odoo test` do not require stopping the foreground server
 
 ## 2b. Edit-reload-update cycle
@@ -203,10 +203,10 @@ Expected workspace setup:
         saas-19.4/          <- master's detected version (from release.py)
     .run/
         19.0/
-            odoo-19.0/
+            19.0/
                 ports
         master/
-            odoo-master/
+            master/
                 ports
     19.0/
         odoo/
@@ -224,8 +224,8 @@ Source of truth:
   (e.g. `saas-19.4`), not by the worktree name; it changes as master rolls forward
 - because several worktrees exist, commands run outside a worktree must use
   `-w` / `--worktree`
-- default databases are derived from the targeted worktree: `odoo-19.0` and
-  `odoo-master`
+- default databases are derived from the targeted worktree: `19.0` and
+  `master`
 - each `(worktree, database)` pair has its own `.run/` directory (just `ports` in v1)
 - each server auto-allocates a distinct port, so both can run at once
 - in v1 both share odoo-bin's default data location; per-instance `.data/` is v2
@@ -254,7 +254,7 @@ Expected workspace setup:
         documentation.git
     .run/
         fix-pos-flow/
-            odoo-fix-pos-flow/
+            fix-pos-flow/
                 ports
     fix-pos-flow/
         odoo/
@@ -267,7 +267,7 @@ Source of truth:
 
 - `fix-pos-flow/odoo` and `fix-pos-flow/documentation` are real git worktrees
 - the version is inferred from `fix-pos-flow/odoo/odoo/release.py`
-- default database is `odoo-fix-pos-flow`
+- default database is `fix-pos-flow`
 - `odoo module install point_of_sale` installs POS into that database
 - the database is the source of truth for installed modules; `odoo db reset`
   re-reads the installed set and reinstalls it (so POS survives a reset)
@@ -331,7 +331,7 @@ odoo worktree create customer-a 19.0 \
   --addon support-tools
 
 cd ~/odoo/customer-a
-odoo start -d customer-a       # foreground; Ctrl-C to stop
+odoo start                     # db defaults to customer-a; Ctrl-C to stop
 ```
 
 Expected workspace setup:

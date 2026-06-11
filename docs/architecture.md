@@ -285,7 +285,7 @@ Fields:
 Target resolution:
 
 - worktree: explicit `--worktree` -> cwd inside worktree -> only worktree -> error
-- database: explicit `--db` -> `odoo-{worktree}`
+- database: explicit `--db` -> `{worktree}`
 
 All command services should receive a `Target` when they operate on a worktree
 or database.

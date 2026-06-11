@@ -87,7 +87,7 @@ Expected workspace setup:
         documentation.git
     .run/
         19.0/
-            odoo-19.0/
+            19.0/
                 pid
                 log
                 ports
