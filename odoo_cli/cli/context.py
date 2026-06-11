@@ -7,6 +7,7 @@ from functools import cached_property
 from typing import Mapping
 
 from odoo_cli.cli.output import Output
+from odoo_cli.core.odoo_bin import OdooBinService
 from odoo_cli.core.postgres import PostgresService
 from odoo_cli.core.repositories import RepositoryService
 from odoo_cli.core.venvs import VenvService
@@ -61,6 +62,10 @@ class Services:
     @cached_property
     def postgres(self) -> PostgresService:
         return PostgresService(self.process)
+
+    @cached_property
+    def odoo_bin(self) -> OdooBinService:
+        return OdooBinService(self.env)
 
 
 @dataclass
