@@ -543,6 +543,24 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
  - if odoo.git does not have the requested version, fail
  - if an optional repository does not have the requested version, skip that repository and report a warning
  - sets up venv if needed (reuses existing .venvs/{version} if available)
+ - checkout branch convention (branch-per-worktree): git allows a branch to be
+   checked out in only one worktree per repository, and all worktrees share the
+   bare repos in `.repositories/`, so two worktrees on the same version cannot
+   both sit on the version branch. Therefore:
+   - when name = version (`odoo worktree create 19.0`), the worktree checks out
+     the version branch itself
+   - when name ≠ version (`odoo worktree create fix-pos-flow 19.0`), a new
+     local branch named after the worktree is created from the version
+     (`git worktree add -b fix-pos-flow … 19.0`) in every repo checked out into
+     the worktree — feature worktrees start on a branch ready to push to the
+     dev remote, matching the convention of identical branch names across
+     odoo/enterprise
+   - a pre-existing branch with the worktree's name (left over from a removed
+     worktree of the same name) is reused, never reset
+   - consequence: the branch is created in every repo of the worktree, even
+     ones that will never be touched (e.g. `documentation`)
+   - the worktree's version remains derived from `odoo/odoo/release.py`, never
+     from the branch name
 
 ### `odoo worktree create --linked-from` [v1]
  - `odoo worktree create customer-a 19.0 --linked-from 19.0 --addon customer-a-addons --addon support-tools`
@@ -556,7 +574,8 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
  - `--addon` is a creation-time checkout action; addon membership is thereafter determined by the directories present at the worktree root, not by any stored list
  - addon repositories are checked out as siblings of `odoo` and `enterprise`
  - after creation, addon membership is determined by the directories present at the worktree root
- - addon repositories use a branch matching the Odoo version when it exists; otherwise they use the repository's default branch and report a warning
+ - addon repositories branch from the Odoo-version branch when it exists; otherwise from the repository's default branch, with a warning
+ - addon checkouts follow the same branch-per-worktree convention as full worktrees: the checked-out branch is named after the worktree, created from that base branch (so the same addon repo can be attached to several linked worktrees)
 
 ### `odoo worktree list` [v2]
  - list all worktrees with their version, branch, and running server status
