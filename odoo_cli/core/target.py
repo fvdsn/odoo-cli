@@ -18,6 +18,7 @@ from typing import Mapping
 from odoo_cli.core import worktrees
 from odoo_cli.core.errors import TargetAmbiguous, WorktreeNotFound
 from odoo_cli.core.models import Target, Workspace, Worktree
+from odoo_cli.core.repositories import validate_name
 from odoo_cli.core.workspace import WorkspaceResolver
 
 
@@ -33,6 +34,9 @@ class TargetResolver:
     def resolve(self, worktree: str | None = None, db: str | None = None) -> Target:
         workspace = self.workspaces.resolve()
         resolved = self._resolve_worktree(workspace, worktree)
+        if db is not None:
+            # db names reach psql command lines and SQL literals
+            validate_name(db, kind="database name")
         return Target(
             workspace=workspace,
             worktree=resolved,

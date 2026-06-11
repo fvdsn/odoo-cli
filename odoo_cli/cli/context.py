@@ -7,7 +7,9 @@ from functools import cached_property
 from typing import Mapping
 
 from odoo_cli.cli.output import Output
+from odoo_cli.core.database import DatabaseService
 from odoo_cli.core.odoo_bin import OdooBinService
+from odoo_cli.core.server import RunStateStore, ServerService
 from odoo_cli.core.postgres import PostgresService
 from odoo_cli.core.repositories import RepositoryService
 from odoo_cli.core.venvs import VenvService
@@ -66,6 +68,14 @@ class Services:
     @cached_property
     def odoo_bin(self) -> OdooBinService:
         return OdooBinService(self.env)
+
+    @cached_property
+    def database(self) -> DatabaseService:
+        return DatabaseService(self.postgres, self.odoo_bin, self.process)
+
+    @cached_property
+    def server(self) -> ServerService:
+        return ServerService(RunStateStore(), self.process)
 
 
 @dataclass
