@@ -10,11 +10,13 @@ from odoo_cli.cli.output import Output
 from odoo_cli.core.database import DatabaseService
 from odoo_cli.core.modules import ModuleService
 from odoo_cli.core.odoo_bin import OdooBinService
-from odoo_cli.core.server import RunStateStore, ServerService
 from odoo_cli.core.postgres import PostgresService
 from odoo_cli.core.repositories import RepositoryService
-from odoo_cli.core.venvs import VenvService
+from odoo_cli.core.server import RunStateStore, ServerService
+from odoo_cli.core.shell import ShellService
 from odoo_cli.core.target import TargetResolver
+from odoo_cli.core.testing import TestingService
+from odoo_cli.core.venvs import VenvService
 from odoo_cli.core.workspace import WorkspaceResolver
 from odoo_cli.core.worktrees import WorktreeService
 from odoo_cli.util.git import Git
@@ -81,6 +83,14 @@ class Services:
     @cached_property
     def modules(self) -> ModuleService:
         return ModuleService(self.database, self.odoo_bin, self.venvs, self.process)
+
+    @cached_property
+    def testing(self) -> TestingService:
+        return TestingService(self.database, self.odoo_bin, self.venvs, self.process)
+
+    @cached_property
+    def shell(self) -> ShellService:
+        return ShellService(self.database, self.odoo_bin, self.venvs, self.process)
 
 
 @dataclass
