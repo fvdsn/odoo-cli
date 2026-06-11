@@ -7,6 +7,7 @@ test immediately, so a service can never silently shell out.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
 from odoo_cli.util.process import ProcessError, ProcessResult
@@ -16,7 +17,9 @@ class FakeProcessRunner:
     def __init__(self):
         self.calls: list[tuple[str, ...]] = []
         self.stream_calls: list[tuple[str, ...]] = []
-        self._scripts: list[tuple[tuple[str, ...], ProcessResult]] = []
+        self._scripts: list[
+            tuple[tuple[str, ...], ProcessResult, Callable | None]
+        ] = []
         self.stream_returncode = 0
 
     def expect(
@@ -25,16 +28,18 @@ class FakeProcessRunner:
         stdout: str = "",
         stderr: str = "",
         returncode: int = 0,
+        effect: Callable[[tuple[str, ...]], None] | None = None,
     ) -> None:
         """Make any command starting with `prefix` return this result.
 
         Later registrations win over earlier ones, so tests can override a
-        broad default with a specific case.
+        broad default with a specific case. `effect(argv)` runs on match to
+        emulate filesystem side effects (clones creating directories, ...).
         """
         result = ProcessResult(
             argv=prefix, returncode=returncode, stdout=stdout, stderr=stderr
         )
-        self._scripts.insert(0, (prefix, result))
+        self._scripts.insert(0, (prefix, result, effect))
 
     def run(
         self,
@@ -47,8 +52,10 @@ class FakeProcessRunner:
     ) -> ProcessResult:
         call = tuple(str(a) for a in argv)
         self.calls.append(call)
-        for prefix, scripted in self._scripts:
+        for prefix, scripted, effect in self._scripts:
             if call[: len(prefix)] == prefix:
+                if effect is not None:
+                    effect(call)
                 result = ProcessResult(
                     argv=call,
                     returncode=scripted.returncode,

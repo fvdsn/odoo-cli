@@ -1,0 +1,99 @@
+"""`odoo init`: bootstrap the workspace. Minimal, good defaults, unattended.
+
+Installs no module: the initial database is created empty by the first
+command that needs it (`odoo module install`, `odoo start`).
+"""
+
+from __future__ import annotations
+
+from odoo_cli.cli._click import click
+from odoo_cli.cli.context import CliContext
+from odoo_cli.core.errors import PostgresError
+from odoo_cli.core.models import Workspace, Worktree
+from odoo_cli.core.odoo_conf import OdooConf
+from odoo_cli.core.repositories import DEFAULT_REPOS
+
+
+@click.command()
+@click.argument("version", required=False)
+@click.option(
+    "--full",
+    is_flag=True,
+    help="Complete clones instead of blobless (--filter=blob:none).",
+)
+@click.option(
+    "--no-demo-data",
+    is_flag=True,
+    help="Disable demo data (sets without_demo in odoo.conf).",
+)
+@click.pass_obj
+def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -> None:
+    """Create the workspace: clone repos, first worktree, venv, odoo.conf.
+
+    With no VERSION, uses the latest stable (highest N.0 branch).
+    """
+    services, out = ctx.services, ctx.output
+
+    # fail fast before any slow clone
+    if not services.postgres.is_installed():
+        raise PostgresError(
+            "PostgreSQL is not installed (psql not found)",
+            hint=(
+                "install it first: `apt install postgresql` (Debian/Ubuntu) "
+                "or `brew install postgresql` (macOS), then re-run `odoo init`"
+            ),
+        )
+
+    root = services.workspace.create_skeleton()
+
+    created, missing = services.workspace.ensure_default_conf()
+    conf_path = services.workspace.conf_path
+    if created:
+        out.echo(f"Wrote default configuration to {conf_path}")
+    elif missing:
+        out.warn(
+            f"{conf_path} exists and was left untouched; expected keys missing: "
+            f"{', '.join(missing)} (use `odoo config set`)"
+        )
+    for warning in services.workspace.rcfile_warnings():
+        out.warn(warning)
+
+    if no_demo_data:
+        conf = OdooConf.load(conf_path)
+        conf.set("without_demo", "True")
+        conf.save()
+
+    # the workspace only resolves once odoo.git exists; build the value
+    # object directly for the bootstrap clones
+    bootstrap = Workspace(root=root, config=OdooConf.load(conf_path))
+    for name in DEFAULT_REPOS:
+        action = "Fetching" if services.repositories.exists(bootstrap, name) else "Cloning"
+        out.echo(f"{action} {name} ({'full' if full else 'blobless'})...")
+        services.repositories.clone_or_fetch(bootstrap, name, full=full)
+
+    workspace = services.workspace.resolve()
+    odoo_repo = services.repositories.get(workspace, "odoo")
+    version = version or services.repositories.latest_stable_version(odoo_repo)
+
+    worktree_path = workspace.root / version
+    if worktree_path.exists():
+        out.echo(f"Worktree {version} already exists, leaving it untouched")
+        worktree = Worktree(name=version, path=worktree_path)
+    else:
+        out.echo(f"Creating worktree {version}...")
+        result = services.worktrees.create_full(workspace, version, version)
+        for skipped in result.skipped:
+            out.warn(f"skipped {skipped.name}: {skipped.reason}")
+        worktree = result.worktree
+
+    out.echo("Setting up the virtual environment...")
+    services.venvs.ensure(workspace, worktree)
+
+    if not services.postgres.check_connection(workspace.config):
+        out.warn(
+            "could not connect to PostgreSQL; fix the db_* keys with "
+            "`odoo config set db_user ...` (see `odoo config list`)"
+        )
+
+    out.success(f"Workspace ready at {workspace.root}")
+    out.echo(f"Next: cd {worktree.path} && odoo start")

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import cached_property
+from typing import Mapping
 
 from odoo_cli.cli.output import Output
+from odoo_cli.core.postgres import PostgresService
 from odoo_cli.core.repositories import RepositoryService
+from odoo_cli.core.venvs import VenvService
 from odoo_cli.core.target import TargetResolver
 from odoo_cli.core.workspace import WorkspaceResolver
 from odoo_cli.core.worktrees import WorktreeService
@@ -23,16 +26,21 @@ class Services:
     implemented.
     """
 
-    def __init__(self, process: ProcessRunner | None = None):
+    def __init__(
+        self,
+        process: ProcessRunner | None = None,
+        env: Mapping[str, str] | None = None,
+    ):
         self.process = process or ProcessRunner()
+        self.env = env  # None means os.environ; tests inject isolation
 
     @cached_property
     def workspace(self) -> WorkspaceResolver:
-        return WorkspaceResolver()
+        return WorkspaceResolver(self.env)
 
     @cached_property
     def targets(self) -> TargetResolver:
-        return TargetResolver(self.workspace)
+        return TargetResolver(self.workspace, self.env)
 
     @cached_property
     def git(self) -> Git:
@@ -45,6 +53,14 @@ class Services:
     @cached_property
     def worktrees(self) -> WorktreeService:
         return WorktreeService(self.git, self.repositories)
+
+    @cached_property
+    def venvs(self) -> VenvService:
+        return VenvService(self.process)
+
+    @cached_property
+    def postgres(self) -> PostgresService:
+        return PostgresService(self.process)
 
 
 @dataclass

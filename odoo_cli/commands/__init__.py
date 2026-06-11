@@ -10,6 +10,6 @@ from __future__ import annotations
 
 def register(group) -> None:
     """Attach all command modules to the root click group."""
-    # Command modules are appended here as they are implemented, e.g.:
-    #   from odoo_cli.commands import init
-    #   group.add_command(init.init)
+    from odoo_cli.commands import init
+
+    group.add_command(init.init)
