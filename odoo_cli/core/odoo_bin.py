@@ -80,8 +80,13 @@ class OdooBinService:
         return self._command(target, python, argv, purpose="server start")
 
     def db_init(self, target: Target, *, python: Path) -> OdooBinCommand:
-        """Initialize the target database empty (base only, no modules)."""
-        argv = self._base_argv(target) + ["--stop-after-init", "--no-http"]
+        """Initialize the target database empty (base only, no modules).
+
+        The explicit `-i base` matters: without an install/update request,
+        odoo-bin exits 0 on an empty database without initializing it."""
+        argv = self._base_argv(target) + [
+            "-i", "base", "--stop-after-init", "--no-http",
+        ]
         return self._command(target, python, argv, purpose="db init")
 
     def module_install(

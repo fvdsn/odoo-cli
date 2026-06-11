@@ -53,7 +53,8 @@ class TestEnsureInitialized(DatabaseTestCase):
         init_call = self.runner.calls[-1]
         self.assertIn("--stop-after-init", init_call)
         self.assertIn("--no-http", init_call)
-        self.assertNotIn("-i", init_call)  # empty: no modules
+        # "empty" means base only; without -i odoo-bin would not initialize
+        self.assertEqual(init_call[init_call.index("-i") + 1], "base")
 
     def test_existing_database_untouched(self):
         self.db_exists(True)

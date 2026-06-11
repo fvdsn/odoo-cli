@@ -92,7 +92,7 @@ class TestDbInit(OdooBinTestCase):
         self.assertEqual(
             cmd.argv,
             self.bin_prefix(target) + self.base(target)
-            + ["--stop-after-init", "--no-http"],
+            + ["-i", "base", "--stop-after-init", "--no-http"],
         )
 
 
