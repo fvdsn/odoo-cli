@@ -13,7 +13,7 @@ from odoo_cli.core.repositories import RepositoryService
 from odoo_cli.core.worktrees import WorktreeService
 from odoo_cli.util.git import Git
 from tests.fixtures.process import FakeProcessRunner
-from tests.fixtures.workspace import make_worktree, make_workspace
+from tests.fixtures.workspace import make_workspace, make_worktree
 
 
 class LinkedWorktreeTestCase(unittest.TestCase):

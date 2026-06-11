@@ -8,7 +8,7 @@ from odoo_cli.core.odoo_bin import OdooBinService
 from odoo_cli.core.odoo_conf import OdooConf
 from odoo_cli.core.postgres import PostgresService
 from tests.fixtures.process import FakeProcessRunner
-from tests.fixtures.workspace import make_env, make_worktree, make_workspace
+from tests.fixtures.workspace import make_env, make_workspace, make_worktree
 
 MODULES_SQL = "SELECT name FROM ir_module_module WHERE state = 'installed'"
 

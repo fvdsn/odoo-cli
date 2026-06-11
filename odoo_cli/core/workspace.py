@@ -7,8 +7,8 @@ is no marker config file. Resolution order: `ODOO_DIR` if set, else `~/odoo`.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from odoo_cli.core import paths
 from odoo_cli.core.errors import WorkspaceNotFound

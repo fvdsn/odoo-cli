@@ -8,7 +8,7 @@ from pathlib import Path
 from odoo_cli.core.errors import UnsupportedOdooVersion
 from odoo_cli.core.models import Ports, Target, Workspace, Worktree
 from odoo_cli.core.odoo_bin import OdooBinService, capabilities_for
-from tests.fixtures.workspace import make_env, make_worktree, make_workspace
+from tests.fixtures.workspace import make_env, make_workspace, make_worktree
 
 
 class OdooBinTestCase(unittest.TestCase):

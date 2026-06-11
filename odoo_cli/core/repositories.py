@@ -75,7 +75,9 @@ class RepositoryService:
     def exists(self, workspace: Workspace, name: str) -> bool:
         return (workspace.repositories_dir / f"{name}.git").is_dir()
 
-    def add(self, workspace: Workspace, name: str, url: str, *, full: bool = False) -> RepositorySpec:
+    def add(
+        self, workspace: Workspace, name: str, url: str, *, full: bool = False
+    ) -> RepositorySpec:
         """`odoo repo add`: clone a custom addon repository."""
         validate_name(name, kind="repository name")
         if name in BUILTIN_URLS:

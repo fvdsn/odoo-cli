@@ -9,7 +9,7 @@ from odoo_cli.cli.main import cli
 from odoo_cli.core.server import RunStateStore, ServerService
 from odoo_cli.core.venvs import READY_MARKER
 from tests.fixtures.process import FakeProcessRunner
-from tests.fixtures.workspace import make_env, make_worktree, make_workspace
+from tests.fixtures.workspace import make_env, make_workspace, make_worktree
 
 
 class CommandTestCase(unittest.TestCase):

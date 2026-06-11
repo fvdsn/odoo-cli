@@ -12,8 +12,8 @@ worktree, but the command must target the linked worktree.
 from __future__ import annotations
 
 import os
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Mapping
 
 from odoo_cli.core import worktrees
 from odoo_cli.core.errors import TargetAmbiguous, WorktreeNotFound

@@ -20,9 +20,9 @@ from __future__ import annotations
 
 import os
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 from odoo_cli.core import paths, release
 from odoo_cli.core.addons import resolve_addons_paths

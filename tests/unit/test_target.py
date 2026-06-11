@@ -6,7 +6,7 @@ from pathlib import Path
 from odoo_cli.core.errors import TargetAmbiguous, WorktreeNotFound
 from odoo_cli.core.target import TargetResolver
 from odoo_cli.core.workspace import WorkspaceResolver
-from tests.fixtures.workspace import make_env, make_worktree, make_workspace
+from tests.fixtures.workspace import make_env, make_workspace, make_worktree
 
 
 class TargetTestCase(unittest.TestCase):

@@ -93,6 +93,7 @@ class TestV1Workflows(unittest.TestCase):
         env = dict(os.environ)
         env["ODOO_DIR"] = str(cls.workspace)
         env["XDG_CONFIG_HOME"] = str(cls.config_home)
+        env["PYTHONPATH"] = str(PROJECT_ROOT)  # python -m odoo_cli from any cwd
         env.pop("ODOO_RC", None)
         return env
 
@@ -229,7 +230,11 @@ class TestV1Workflows(unittest.TestCase):
             ports_file = self.workspace / ".run" / self.version / db / "ports"
             deadline = time.monotonic() + 300
             while not ports_file.is_file() and time.monotonic() < deadline:
-                self.assertIsNone(proc.poll(), "odoo start exited early")
+                if proc.poll() is not None:
+                    self.fail(
+                        f"odoo start exited early ({proc.returncode}):\n"
+                        + proc.stdout.read()
+                    )
                 time.sleep(1)
             self.assertTrue(ports_file.is_file(), "ports file never appeared")
             http_port = int(

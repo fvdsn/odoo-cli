@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from functools import cached_property
-from typing import Mapping
 
 from odoo_cli.cli.output import Output
 from odoo_cli.core.config_service import ConfigService
