@@ -508,6 +508,10 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
  - `--future-only` — clone/fetch only; leave existing worktrees untouched
  - `--to $WORKTREE` (repeatable) — add only to the listed worktrees
  - if the repo lacks a worktree's detected version, skip that worktree and warn
+ - linked worktrees are skipped with a warning pointing at their source
+   worktree (standard repos are symlinks created at worktree-creation time, so
+   an existing linked worktree does not gain the repo automatically even after
+   its source has it — open point, see `requirements_v3.md` → "Open questions")
  - always prints a summary: repo cloned/fetched, worktrees updated, worktrees
    skipped with the reason
  - `enterprise` defaults to git URL `git@github.com:odoo/enterprise.git`

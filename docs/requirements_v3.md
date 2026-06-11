@@ -81,6 +81,13 @@ version as odoo-bin gains conventions.
  - packaging and discovery mechanism (e.g. entry points) to be defined
 
 ## Open questions
+ - `odoo repo enable` vs existing linked worktrees: enable skips linked
+   worktrees, and their symlinks only cover repos the source had at creation
+   time — so an existing linked worktree never gains a later-enabled repo
+   (manual symlink or recreation required). A candidate fix is for enable to
+   also symlink the repo into every linked worktree whose `odoo/` points at an
+   updated source. Deliberately left to real user feedback rather than design;
+   resolve when the v1/v2 testers hit it.
  - distribution: does the MCP frontend ship in the same package as the CLI or
    separately?
  - authentication and secret handling for cloud backends
