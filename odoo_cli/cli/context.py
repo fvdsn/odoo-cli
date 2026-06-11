@@ -8,6 +8,7 @@ from typing import Mapping
 
 from odoo_cli.cli.output import Output
 from odoo_cli.core.database import DatabaseService
+from odoo_cli.core.modules import ModuleService
 from odoo_cli.core.odoo_bin import OdooBinService
 from odoo_cli.core.server import RunStateStore, ServerService
 from odoo_cli.core.postgres import PostgresService
@@ -76,6 +77,10 @@ class Services:
     @cached_property
     def server(self) -> ServerService:
         return ServerService(RunStateStore(), self.process)
+
+    @cached_property
+    def modules(self) -> ModuleService:
+        return ModuleService(self.database, self.odoo_bin, self.venvs, self.process)
 
 
 @dataclass

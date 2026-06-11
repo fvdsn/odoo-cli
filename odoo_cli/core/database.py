@@ -38,6 +38,24 @@ class DatabaseService:
         self.runner.run(command.argv, cwd=command.cwd, extra_env=command.env)
         return True
 
+    def reset(self, target: Target, *, python: Path) -> list[str]:
+        """Drop and recreate the database, reinstalling the module set read
+        from it beforehand. A database that never had modules (or does not
+        exist) is recreated empty. v1 does not touch the shared data_dir/
+        filestore. Returns the reinstalled modules."""
+        conf = target.workspace.config
+        modules: list[str] = []
+        if self.postgres.db_exists(conf, target.database):
+            modules = [
+                m for m in self.installed_modules(target) if m != "base"
+            ]
+            self.postgres.drop_db(conf, target.database)
+        self.ensure_initialized(target, python=python)
+        if modules:
+            command = self.odoo_bin.module_install(target, modules, python=python)
+            self.runner.run(command.argv, cwd=command.cwd, extra_env=command.env)
+        return modules
+
     def installed_modules(self, target: Target) -> list[str]:
         """The set `db reset` reinstalls; the database is the source of truth."""
         rows = self.postgres.sql(
