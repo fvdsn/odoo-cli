@@ -27,6 +27,12 @@
     -> working setup no questions asked
         -> fine-tune afterwards with `odoo config set` (interactive wizard is v2)
     -> no more than 5min
+    -> the script lives at `install.sh` in this repo: it announces what it
+       will install, ensures Python 3.10+ and git (apt/Homebrew), downloads
+       the latest wheel from PyPI (sha256-verified), unpacks it under
+       `~/.local/share/odoo-cli` with a launcher at `~/.local/bin/odoo`, then
+       runs `odoo init`; no pip, no venv, no third-party tooling, and no
+       confirmation prompts (sudo's password prompt is the consent point)
 
 ## Available as a global `odoo` command
  - you can run `odoo start` from any directory in the shell
