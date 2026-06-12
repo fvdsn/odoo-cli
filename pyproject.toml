@@ -1,6 +1,6 @@
 [project]
 name = "odoo-cli-official"
-version = "1.0.0.dev0"
+dynamic = ["version"]
 description = "CLI tool to manage and develop local Odoo instances"
 requires-python = ">=3.11"
 readme = "README.md"
@@ -13,7 +13,6 @@ classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -23,8 +22,16 @@ classifiers = [
 # Runtime is stdlib plus the vendored click under odoo_cli/_vendor.
 dependencies = []
 
+[project.urls]
+Homepage = "https://github.com/fvdsn/odoo-cli"
+Repository = "https://github.com/fvdsn/odoo-cli"
+Issues = "https://github.com/fvdsn/odoo-cli/issues"
+
 [project.scripts]
 odoo = "odoo_cli.cli.main:main"
+
+[tool.hatch.version]
+path = "odoo_cli/__init__.py"
 
 [tool.ruff]
 line-length = 100
@@ -36,6 +43,9 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["odoo_cli"]
+
+[tool.hatch.build.targets.sdist]
+exclude = [".claude", "/dist"]
 
 [tool.uv]
 dev-dependencies = [
