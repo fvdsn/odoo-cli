@@ -80,7 +80,12 @@ def enable(
         action, past = "Fetching", "fetched"
     else:
         action, past = "Cloning", "cloned"
-    out.echo(f"{action} {name}...")
+    mode = (
+        ""
+        if existed and not corrupt
+        else f" ({services.repositories.clone_mode(False)})"
+    )
+    out.echo(f"{action} {name}{mode}...")
     services.repositories.clone_or_fetch(workspace, name, url)
 
     added, skipped = [], []

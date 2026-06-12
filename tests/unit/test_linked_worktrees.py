@@ -270,3 +270,28 @@ class TestAddRepository(LinkedWorktreeTestCase):
         )
         self.assertFalse(result.added)
         self.assertIn("no branch '19.0'", result.reason)
+
+    def test_master_worktree_uses_master_branch(self):
+        make_worktree(self.root, "master", version="saas-19.4", repos=())
+        repo = self.repo_path("enterprise")
+        self.runner.expect(
+            "git", "-C", repo, "rev-parse", "--verify", "--quiet",
+            "refs/heads/saas-19.4", returncode=1,
+        )
+        self.runner.expect(
+            "git", "-C", repo, "rev-parse", "--verify", "--quiet",
+            "refs/heads/master",
+        )
+
+        result = self.service.add_repository(
+            self.workspace, self.worktree("master"), "enterprise"
+        )
+
+        self.assertTrue(result.added)
+        self.assertIn(
+            (
+                "git", "-C", repo, "worktree", "add",
+                str(self.root / "master" / "enterprise"), "master",
+            ),
+            self.runner.calls,
+        )

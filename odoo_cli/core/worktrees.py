@@ -361,18 +361,33 @@ class WorktreeService:
                 f"{dest} exists but is not a git checkout; remove it and re-run",
             )
         version = self.detect_version(worktree)
-        if not self.git.branch_exists(repo.path, version):
+        base = self._standard_repo_base(repo, worktree, version)
+        if base is None:
             return AddRepoResult(worktree.name, False, f"no branch '{version}'")
         # a stale registration (manually deleted checkout) blocks worktree add
         self.git.worktree_prune(repo.path)
         try:
-            self._checkout(repo.path, dest, worktree.name, version)
+            self._checkout(repo.path, dest, worktree.name, base)
         except BaseException:
             # BaseException: see create_full
             shutil.rmtree(dest, ignore_errors=True)
             self.git.worktree_prune(repo.path)
             raise
         return AddRepoResult(worktree.name, True)
+
+    def _standard_repo_base(self, repo, worktree: Worktree, version: str) -> str | None:
+        """Branch to use when backfilling a standard repo into an existing
+        full worktree.
+
+        Master's runtime version comes from release.py (for example
+        saas-19.4), while sibling Odoo repos usually keep their rolling
+        development line as `master`.
+        """
+        if worktree.name == "master" and self.git.branch_exists(repo.path, "master"):
+            return "master"
+        if self.git.branch_exists(repo.path, version):
+            return version
+        return None
 
     def is_valid(self, worktree: Worktree) -> bool:
         try:

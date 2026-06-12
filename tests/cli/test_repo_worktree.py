@@ -61,6 +61,7 @@ class TestRepoEnable(RepoWorktreeTestCase):
 
     def test_enable_adds_to_compatible_worktrees(self):
         repo = str(self.repos() / "enterprise.git")
+        self.runner.expect("git", "--version", stdout="git version 2.54.0\n")
         self.runner.expect(
             "git", "-C", repo, "rev-parse", "--verify", "--quiet",
             "refs/heads/17.0", returncode=1,
@@ -69,8 +70,16 @@ class TestRepoEnable(RepoWorktreeTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         clone = next(c for c in self.runner.calls if c[1] == "clone")
         self.assertIn("git@github.com:odoo/enterprise.git", clone)
+        self.assertIn("Cloning enterprise (blobless)...", result.output)
         self.assertIn("added to: 19.0", result.output)
         self.assertIn("skipped 17.0: no branch '17.0'", result.output)
+
+    def test_enable_fetch_output_has_no_clone_mode(self):
+        (self.repos() / "enterprise.git").mkdir()
+        result = self.invoke("repo", "enable", "enterprise", "--future-only")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Fetching enterprise...", result.output)
+        self.assertNotIn("Fetching enterprise (", result.output)
 
     def test_future_only(self):
         result = self.invoke("repo", "enable", "enterprise", "--future-only")
