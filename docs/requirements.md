@@ -437,10 +437,22 @@ creation, at which point explicit `-c` becomes unnecessary on those versions —
  - both are optional on all commands — omit to infer from context
 
 ## Target resolution order
- - worktree: cwd if inside a worktree → only worktree if there's exactly one → error
+ - worktree: cwd if inside a worktree → `-d` hint → only worktree if there's
+   exactly one → error
  - cwd detection uses the logical path (`$PWD`, validated against `getcwd()`):
    inside a linked worktree's symlinked `odoo/`, the physical path points at the
    source worktree, but the command must target the linked worktree
+ - `-d` hint: when several worktrees exist and the cwd does not decide, the
+   database selects the worktree if unambiguous:
+   - a worktree named like the database wins (every worktree's default db is
+     its own name, so `odoo start -d 19.0` targets worktree `19.0`); this
+     beats run state because the naming convention is stable while run state
+     accumulates
+   - else the single worktree holding run state for that database
+     (`.run/{worktree}/{db}/ports`), so `odoo start -d customer-a` works from
+     anywhere once that database ran somewhere
+   - several worktrees with run state for the database → explicit ambiguity
+     error listing them
  - database: explicit `--db` → default `{worktree}`
  - if worktree resolution fails because multiple worktrees exist, print an explicit error:
    - explain that no default worktree is configured

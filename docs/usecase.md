@@ -222,8 +222,11 @@ Source of truth:
 - each worktree's Odoo version is inferred from its own `odoo/odoo/release.py`
 - the `master` worktree's venv is keyed by the version its `release.py` reports
   (e.g. `saas-19.4`), not by the worktree name; it changes as master rolls forward
-- because several worktrees exist, commands run outside a worktree must use
-  `-w` / `--worktree`
+- because several worktrees exist, commands run outside a worktree must name
+  their target: `-w` / `--worktree`, or an unambiguous `-d` (`odoo start -d
+  19.0` targets worktree `19.0` since the default database of a worktree is
+  its own name; `odoo start -d customer-a` targets the only worktree that
+  database has run under)
 - default databases are derived from the targeted worktree: `19.0` and
   `master`
 - each `(worktree, database)` pair has its own `.run/` directory (just `ports` in v1)

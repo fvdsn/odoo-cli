@@ -106,6 +106,72 @@ class TestWorktreeResolution(TargetTestCase):
         self.assertEqual(target.worktree.name, "19.0")
 
 
+class TestDbHintResolution(TargetTestCase):
+    """`-d` selects the worktree when nothing stronger (cwd, --worktree)
+    decides: by worktree name first, then by unique run state."""
+
+    def ports_file(self, worktree: str, db: str):
+        run_dir = self.root / ".run" / worktree / db
+        run_dir.mkdir(parents=True)
+        (run_dir / "ports").write_text("http=8069\ngevent=8072\n")
+
+    def test_db_matching_a_worktree_name(self):
+        make_worktree(self.root, "19.0", version="19.0")
+        make_worktree(self.root, "master", version="saas-19.4")
+        target = self.resolver().resolve(db="19.0")
+        self.assertEqual(target.worktree.name, "19.0")
+        self.assertEqual(target.database, "19.0")
+
+    def test_db_with_run_state_in_one_worktree(self):
+        make_worktree(self.root, "19.0", version="19.0")
+        make_worktree(self.root, "master", version="saas-19.4")
+        self.ports_file("19.0", "customer-a")
+        target = self.resolver().resolve(db="customer-a")
+        self.assertEqual(target.worktree.name, "19.0")
+        self.assertEqual(target.database, "customer-a")
+
+    def test_db_with_run_state_in_several_worktrees_is_ambiguous(self):
+        make_worktree(self.root, "19.0", version="19.0")
+        make_worktree(self.root, "master", version="saas-19.4")
+        self.ports_file("19.0", "customer-a")
+        self.ports_file("master", "customer-a")
+        with self.assertRaises(TargetAmbiguous) as cm:
+            self.resolver().resolve(db="customer-a")
+        self.assertIn("19.0", cm.exception.message)
+        self.assertIn("master", cm.exception.message)
+
+    def test_name_match_beats_run_state(self):
+        # a db named like a worktree means that worktree's default db, even
+        # when it once ran elsewhere: conventions stay stable, state drifts
+        make_worktree(self.root, "19.0", version="19.0")
+        make_worktree(self.root, "master", version="saas-19.4")
+        self.ports_file("master", "19.0")
+        target = self.resolver().resolve(db="19.0")
+        self.assertEqual(target.worktree.name, "19.0")
+
+    def test_cwd_beats_db_hint(self):
+        make_worktree(self.root, "19.0", version="19.0")
+        make_worktree(self.root, "master", version="saas-19.4")
+        resolver = self.chdir(self.root / "master" / "odoo")
+        target = resolver.resolve(db="19.0")
+        self.assertEqual(target.worktree.name, "master")
+        self.assertEqual(target.database, "19.0")
+
+    def test_db_without_any_match_keeps_the_ambiguity_error(self):
+        make_worktree(self.root, "19.0", version="19.0")
+        make_worktree(self.root, "master", version="saas-19.4")
+        with self.assertRaises(TargetAmbiguous):
+            self.resolver().resolve(db="customer-a")
+
+    def test_unsafe_db_is_rejected_before_filesystem_use(self):
+        from odoo_cli.core.errors import InvalidName
+
+        make_worktree(self.root, "19.0", version="19.0")
+        make_worktree(self.root, "master", version="saas-19.4")
+        with self.assertRaises(InvalidName):
+            self.resolver().resolve(db="../../etc")
+
+
 class TestDatabaseResolution(TargetTestCase):
     def test_default_is_worktree_name(self):
         make_worktree(self.root, "fix-pos-flow", version="19.0")
