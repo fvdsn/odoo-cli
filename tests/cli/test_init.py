@@ -113,6 +113,17 @@ class TestInit(InitCommandTestCase):
         self.assertNotIn("--filter=blob:none", clone)
         self.assertIn("this can take an hour", result.output)
 
+    def test_old_git_falls_back_to_full_clone_and_says_so(self):
+        self.script_happy_path()
+        # registered last, wins over script_happy_path's 2.54
+        self.runner.expect("git", "--version", stdout="git version 2.34.1\n")
+        result = self.invoke("init")
+        self.assertEqual(result.exit_code, 0, result.output)
+        clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
+        self.assertNotIn("--filter=blob:none", clone)
+        self.assertIn("unreliable blobless clones", result.output)
+        self.assertIn("this can take an hour", result.output)
+
     def test_no_demo_data_flag(self):
         self.script_happy_path()
         result = self.invoke("init", "--no-demo-data")

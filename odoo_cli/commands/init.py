@@ -74,7 +74,8 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
         or not services.repositories.exists(bootstrap, name)
         for name in DEFAULT_REPOS
     ):
-        duration = "an hour" if full else "a few minutes"
+        # keyed on the effective mode: old git falls back to full clones
+        duration = "a few minutes" if clone_mode == "blobless" else "an hour"
         out.echo(f"Downloading the Odoo sources, this can take {duration}...")
     for name in DEFAULT_REPOS:
         if services.repositories.is_corrupt(bootstrap, name):
