@@ -54,6 +54,11 @@ class TestConfig(ConfigCommandTestCase):
         reveal = self.invoke("config", "list", "--reveal")
         self.assertIn("hunter2", reveal.output)
 
+    def test_list_does_not_redact_unset_password(self):
+        result = self.invoke("config", "list")
+        self.assertIn("db_password = False", result.output)
+        self.assertNotIn(REDACTED, result.output)
+
     def test_list_without_workspace(self):
         result = self.invoke("config", "list", "--json")
         data = json.loads(result.output)

@@ -81,8 +81,9 @@ class OdooConf:
     def items(self, *, reveal: bool = False) -> dict[str, str]:
         values = dict(self._parser.items(SECTION))
         if not reveal:
-            for key in values:
-                if key in SECRET_KEYS:
+            for key, value in values.items():
+                # "False" and "" mean unset (see core/postgres.py), not a secret
+                if key in SECRET_KEYS and value and value != "False":
                     values[key] = REDACTED
         return values
 
