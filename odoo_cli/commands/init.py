@@ -69,6 +69,13 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
     # object directly for the bootstrap clones
     bootstrap = Workspace(root=root, config=OdooConf.load(conf_path))
     clone_mode = services.repositories.clone_mode(full)
+    if any(
+        services.repositories.is_corrupt(bootstrap, name)
+        or not services.repositories.exists(bootstrap, name)
+        for name in DEFAULT_REPOS
+    ):
+        duration = "an hour" if full else "a few minutes"
+        out.echo(f"Downloading the Odoo sources, this can take {duration}...")
     for name in DEFAULT_REPOS:
         if services.repositories.is_corrupt(bootstrap, name):
             action = "Recloning (incomplete)"

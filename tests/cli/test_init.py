@@ -97,6 +97,7 @@ class TestInit(InitCommandTestCase):
         # blobless clone by default
         clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertIn("--filter=blob:none", clone)
+        self.assertIn("this can take a few minutes", result.output)
 
     def test_explicit_version(self):
         self.script_happy_path(version="18.0")
@@ -110,6 +111,7 @@ class TestInit(InitCommandTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertNotIn("--filter=blob:none", clone)
+        self.assertIn("this can take an hour", result.output)
 
     def test_no_demo_data_flag(self):
         self.script_happy_path()
@@ -199,6 +201,8 @@ class TestInit(InitCommandTestCase):
         self.assertEqual(len(fetches), 2)
         self.assertEqual(clones, [])
         self.assertIn("already exists", result.output)
+        # nothing to clone: no duration heads-up
+        self.assertNotIn("this can take", result.output)
 
     def test_rerun_offline_warns_and_continues(self):
         # a re-run on a complete workspace must not require the network:
