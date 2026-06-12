@@ -12,7 +12,7 @@ import os
 import shlex
 import shutil
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -60,11 +60,13 @@ class PostgresService:
         geteuid: Callable[[], int | None] | None = None,
         current_user: Callable[[], str] | None = None,
         socket_dirs: tuple[Path, ...] | None = None,
+        environ: Mapping[str, str] | None = None,
     ):
         self.runner = runner
         self.which = which
         self.platform = sys.platform if platform is None else platform
         self.socket_dirs = _SOCKET_DIRS if socket_dirs is None else socket_dirs
+        self.environ = os.environ if environ is None else environ
         self.geteuid = (
             getattr(os, "geteuid", lambda: None)
             if geteuid is None
@@ -227,9 +229,14 @@ class PostgresService:
         return None
 
     def check_connection(self, conf: OdooConf) -> bool:
+        # Debian's psql is a wrapper that finds the cluster's real port on
+        # its own; pin the port libpq would use so the check reflects what
+        # Odoo will do, not what the wrapper can figure out.
+        env = self.env(conf)
+        port = env.get("PGPORT") or self.environ.get("PGPORT") or "5432"
         result = self.runner.run(
-            ["psql", "--no-psqlrc", "-tAc", "SELECT 1", "postgres"],
-            extra_env=self.env(conf),
+            ["psql", "--no-psqlrc", "-p", port, "-tAc", "SELECT 1", "postgres"],
+            extra_env=env,
             check=False,
         )
         return result.returncode == 0

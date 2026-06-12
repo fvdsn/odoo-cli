@@ -36,6 +36,8 @@ import time
 from pathlib import Path
 
 version = os.environ["ODOO_CLI_DOCKER_E2E_VERSION"]
+expect_init = os.environ.get("ODOO_CLI_DOCKER_E2E_EXPECT_INIT")
+expect_conf = os.environ.get("ODOO_CLI_DOCKER_E2E_EXPECT_CONF")
 workspace = Path("/workspace/odoo")
 config_home = Path("/workspace/config")
 project_root = Path("/src")
@@ -123,8 +125,14 @@ def wait_for_http(port_file, proc, timeout=900):
 
 
 init_output = cli("init", version, timeout=2400)
-if "PostgreSQL is not installed; installing with apt-get" not in init_output:
-    raise SystemExit("odoo init did not exercise PostgreSQL auto-install")
+if expect_init and expect_init not in init_output:
+    raise SystemExit(f"odoo init output missing {expect_init!r}:\n{init_output}")
+if "could not connect to PostgreSQL" in init_output:
+    raise SystemExit(f"odoo init ended without a working connection:\n{init_output}")
+if expect_conf:
+    conf_text = (config_home / "odoo" / "odoo.conf").read_text()
+    if expect_conf not in conf_text:
+        raise SystemExit(f"odoo.conf missing {expect_conf!r}:\n{conf_text}")
 if not (workspace / version / "odoo" / "odoo-bin").is_file():
     raise SystemExit("odoo init did not create the Odoo worktree")
 
@@ -161,10 +169,15 @@ finally:
     "set ODOO_CLI_DOCKER_E2E=1 to run Docker e2e tests",
 )
 class TestDockerFirstRun(unittest.TestCase):
-    def test_init_installs_postgres_and_start_serves_http(self):
+    def run_flow(self, *, setup: str = "", expect: dict[str, str]) -> None:
+        """Run FLOW in a disposable container; `setup` is extra shell run
+        after the base packages, `expect` feeds the EXPECT_* env vars."""
         if not shutil.which("docker"):
             self.skipTest("docker not found")
 
+        env_args = ["-e", f"ODOO_CLI_DOCKER_E2E_VERSION={VERSION}"]
+        for key, value in expect.items():
+            env_args += ["-e", f"ODOO_CLI_DOCKER_E2E_EXPECT_{key}={value}"]
         command = [
             "docker",
             "run",
@@ -172,8 +185,7 @@ class TestDockerFirstRun(unittest.TestCase):
             "-i",
             "-v",
             f"{REPO_ROOT}:/src:ro",
-            "-e",
-            f"ODOO_CLI_DOCKER_E2E_VERSION={VERSION}",
+            *env_args,
             IMAGE,
             "/bin/sh",
             "-lc",
@@ -182,7 +194,8 @@ class TestDockerFirstRun(unittest.TestCase):
                 "apt-get update && "
                 "apt-get install -y git python3 python3-venv python3-dev "
                 "build-essential libpq-dev libldap2-dev libsasl2-dev && "
-                "PYTHONPATH=/src python3 -"
+                + setup
+                + "PYTHONPATH=/src python3 -"
             ),
         ]
         proc = subprocess.run(
@@ -195,3 +208,28 @@ class TestDockerFirstRun(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn("odoo start served HTTP", proc.stdout)
+
+    def test_init_installs_postgres_and_start_serves_http(self):
+        self.run_flow(
+            expect={
+                "INIT": "PostgreSQL is not installed; installing with apt-get",
+            },
+        )
+
+    def test_init_adopts_preinstalled_postgres_on_custom_port(self):
+        """The tester scenario: PostgreSQL already installed but listening on
+        a non-standard port. init must detect the port, save db_port, and
+        `odoo start` must work with it."""
+        self.run_flow(
+            setup=(
+                "apt-get install -y postgresql && "
+                "sed -i 's/^port = .*/port = 6543/' "
+                "/etc/postgresql/*/main/postgresql.conf && "
+                "service postgresql start && "
+                "runuser -u postgres -- createuser -p 6543 --superuser root && "
+            ),
+            expect={
+                "INIT": "PostgreSQL answers on port 6543",
+                "CONF": "db_port = 6543",
+            },
+        )

@@ -33,6 +33,37 @@ class TestEnv(PostgresTestCase):
             self.assertNotIn("hunter2", " ".join(call))
 
 
+class TestCheckConnection(PostgresTestCase):
+    """Debian's psql wrapper auto-detects the cluster port, so the check must
+    pin the port libpq would use or it passes where Odoo would fail."""
+
+    def make_service(self, environ):
+        return PostgresService(self.runner, which=lambda n: None, environ=environ)
+
+    def port_argument(self):
+        call = self.runner.calls[0]
+        return call[call.index("-p") + 1]
+
+    def test_pins_the_libpq_default_port(self):
+        service = self.make_service(environ={})
+        self.runner.expect("psql", stdout="1\n")
+        self.assertTrue(service.check_connection(self.conf))
+        self.assertEqual(self.port_argument(), "5432")
+
+    def test_configured_port_wins(self):
+        service = self.make_service(environ={"PGPORT": "9999"})
+        self.conf.set("db_port", "6543")
+        self.runner.expect("psql", stdout="1\n")
+        service.check_connection(self.conf)
+        self.assertEqual(self.port_argument(), "6543")
+
+    def test_environment_pgport_is_respected(self):
+        service = self.make_service(environ={"PGPORT": "9999"})
+        self.runner.expect("psql", stdout="1\n")
+        service.check_connection(self.conf)
+        self.assertEqual(self.port_argument(), "9999")
+
+
 class TestDatabases(PostgresTestCase):
     def test_db_exists(self):
         self.runner.expect("psql", stdout="1\n")

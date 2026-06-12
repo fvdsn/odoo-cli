@@ -38,6 +38,7 @@ class InitCommandTestCase(unittest.TestCase):
             geteuid=lambda: 0,
             current_user=lambda: "dev",
             socket_dirs=(self.sockets,),
+            environ={},
         )
         services.venvs = VenvService(self.runner, which=self.tools.get)
         return CliContext(services=services)
@@ -360,5 +361,5 @@ class TestInit(InitCommandTestCase):
 
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("could not connect to PostgreSQL", result.output)
-        probes = [c for c in self.runner.calls if c[0] == "psql" and "-p" in c]
+        probes = [c for c in self.runner.calls if c[0] == "psql" and "5433" in c]
         self.assertEqual(probes, [])
