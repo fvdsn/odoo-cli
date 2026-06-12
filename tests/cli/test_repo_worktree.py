@@ -174,19 +174,33 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
         self.assertEqual(result.exit_code, 1)
         self.assertIn("link from '19.0' instead", result.exception.hint)
 
-    def test_worktree_source_without_linked_hints_at_linked(self):
+    def test_worktree_source_duplicates_it(self):
         make_worktree(self.root, "fix-pos", version="19.0")
-        repo = str(self.repos() / "odoo.git")
-        self.runner.expect("git", "-C", repo, "rev-parse", returncode=1)
-        # the repo itself is healthy; only the branch lookup fails
-        self.runner.expect(
-            "git", "-C", repo, "rev-parse", "--verify", "--quiet", "HEAD",
-            stdout="abc123\n",
-        )
+        for repo in ("odoo", "documentation"):
+            self.runner.expect(
+                "git", "-C", str(self.root / "fix-pos" / repo),
+                "symbolic-ref", stdout="fix-pos\n",
+            )
+            self.runner.expect(
+                "git", "-C", str(self.repos() / f"{repo}.git"), "rev-parse",
+                "--verify", "--quiet", "refs/heads/hotfix", returncode=1,
+            )
+            self.runner.expect(
+                "git", "-C", str(self.repos() / f"{repo}.git"),
+                "worktree", "add", effect=self.worktree_effect("19.0"),
+            )
+
         result = self.invoke("worktree", "create", "hotfix", "fix-pos")
-        self.assertEqual(result.exit_code, 1)
-        self.assertIn("--linked", result.exception.hint)
-        self.assertIn("not supported yet", result.exception.hint)
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("checked out odoo", result.output)
+        self.assertIn("worktree hotfix ready", result.output)
+        add = next(
+            c for c in self.runner.calls
+            if "add" in c and str(self.root / "hotfix" / "odoo") in c
+        )
+        # branch hotfix forks from fix-pos's checked-out branch
+        self.assertEqual(add[-1], "fix-pos")
 
 
 class TestVenvCommand(RepoWorktreeTestCase):

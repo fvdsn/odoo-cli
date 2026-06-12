@@ -63,6 +63,18 @@ class WorktreeCreateResult:
     existed: bool = False
 
 
+@dataclass(frozen=True)
+class DuplicationEntry:
+    """One root entry of a duplication source: exactly one of `base`
+    (checkout branched from it), `link_target` (symlink copied verbatim),
+    or `reason` (reported as skipped) is set."""
+
+    repo: str
+    base: str | None = None
+    link_target: str | None = None
+    reason: str | None = None
+
+
 @dataclass
 class AddRepoResult:
     worktree: str
@@ -191,6 +203,115 @@ class WorktreeService:
         else:
             self.git.worktree_add(
                 repo_path, dest, worktree_name, new_branch_from=version
+            )
+
+    def create_duplicate(
+        self, workspace: Workspace, name: str, source_name: str
+    ) -> WorktreeCreateResult:
+        """Duplicate an existing worktree: every repo the source has is
+        checked out on a branch `name` starting from the source repo's
+        current branch (HEAD commit when detached).
+
+        Duplication preserves the worktree's nature: a linked source yields
+        another linked worktree on the same original (its symlink targets
+        are copied verbatim, so no chains appear), with the source's addon
+        checkouts duplicated.
+
+        Re-running on an existing valid duplicate completes it: missing
+        repos are added, present ones are never touched."""
+        source_path = workspace.root / source_name
+        if not (source_path / "odoo").exists():
+            raise WorktreeNotFound(
+                f"source worktree '{source_name}' does not exist"
+            )
+        source = Worktree(name=source_name, path=source_path)
+        self.detect_version(source)  # the source must be a valid worktree
+        plan = self._duplication_plan(workspace, source)
+
+        worktree, warnings, existed = self._prepare_create(workspace, name)
+        path = worktree.path
+        if existed:
+            self._check_duplicate_target(worktree, source)
+        else:
+            path.mkdir(parents=True)
+        result = WorktreeCreateResult(
+            worktree=worktree, warnings=warnings, existed=existed
+        )
+        try:
+            for entry in plan:
+                dest = path / entry.repo
+                if dest.exists() or dest.is_symlink():
+                    continue
+                if entry.reason is not None:
+                    result.skipped.append(SkippedRepo(entry.repo, entry.reason))
+                    continue
+                if entry.link_target is not None:
+                    os.symlink(entry.link_target, dest)
+                    result.linked.append(entry.repo)
+                    continue
+                bare = workspace.repositories_dir / f"{entry.repo}.git"
+                # a stale registration (deleted checkout) blocks worktree add
+                self.git.worktree_prune(bare)
+                self._checkout(bare, dest, name, entry.base)
+                result.checked_out.append(entry.repo)
+        except BaseException:
+            # BaseException: see create_full
+            if not existed:
+                shutil.rmtree(path, ignore_errors=True)
+                self.prune_stale_entries(workspace)
+            raise
+        return result
+
+    def _duplication_plan(
+        self, workspace: Workspace, source: Worktree
+    ) -> list[DuplicationEntry]:
+        """What the duplicate gets for each entry at the source's root:
+        symlinks are copied (linked source), directories backed by a bare
+        repo are branched from their current checkout, git checkouts without
+        a backing repo are reported, anything else is not a repo."""
+        entries = []
+        children = sorted(
+            (c for c in source.path.iterdir() if not c.name.startswith(".")),
+            key=lambda c: (c.name != "odoo", c.name),  # odoo first: see create_full
+        )
+        for child in children:
+            if child.is_symlink():
+                entries.append(
+                    DuplicationEntry(child.name, link_target=os.readlink(child))
+                )
+            elif not child.is_dir():
+                continue
+            elif (workspace.repositories_dir / f"{child.name}.git").exists():
+                base = self.git.current_branch(child) or self.git.head_commit(child)
+                entries.append(DuplicationEntry(child.name, base=base))
+            elif (child / ".git").exists():
+                entries.append(
+                    DuplicationEntry(
+                        child.name,
+                        reason=f"no repository '{child.name}.git' in .repositories",
+                    )
+                )
+            # plain directories (dumps, notes, ...) are not repos
+        return entries
+
+    def _check_duplicate_target(self, worktree: Worktree, source: Worktree) -> None:
+        if worktree.is_linked != source.is_linked:
+            kind = "linked" if worktree.is_linked else "full"
+            raise WorktreeExists(
+                f"worktree '{worktree.name}' already exists as a {kind} "
+                f"worktree, unlike source '{source.name}'"
+            )
+        if worktree.is_linked and worktree.linked_from != source.linked_from:
+            raise WorktreeExists(
+                f"worktree '{worktree.name}' is linked from "
+                f"'{worktree.linked_from}', not '{source.linked_from}'"
+            )
+        detected = self.detect_version(worktree)
+        source_version = self.detect_version(source)
+        if detected != source_version:
+            raise WorktreeExists(
+                f"worktree '{worktree.name}' already exists on version "
+                f"{detected}, not {source_version}"
             )
 
     def create_linked(

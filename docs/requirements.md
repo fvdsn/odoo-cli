@@ -634,10 +634,18 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
      when the middle worktree is removed); the error hints at the real source
    - standard source repositories (`odoo`, `documentation`, and enabled standard repositories such as `enterprise` and `themes`) are symlinked from the source worktree
    - attached addon repositories are checked out as real git worktrees at the linked worktree root
- - planned [v2]: SOURCE naming a worktree *without* `--linked` duplicates it —
-   every repo the source has (addons included) is checked out on a branch
-   named after the new worktree, starting from the source's branches; until
-   then this case errors with a hint pointing at `--linked`
+ - SOURCE naming a worktree *without* `--linked` duplicates it [v1]:
+   - every repo the source has (addons included) is checked out on a branch
+     named after the new worktree, starting from the source repo's current
+     branch (HEAD commit when detached)
+   - duplication preserves the worktree's nature: duplicating a linked
+     worktree yields another linked worktree on the same original (never a
+     symlink chain), with the source's addon checkouts duplicated
+   - source checkouts without a backing repository in `.repositories/` are
+     reported as skipped; non-repo directories (dumps, notes) are ignored
+   - a worktree source wins over a ref of the same name; the readings
+     coincide for version-named worktrees (their branches are named after
+     the version)
  - `--addon $REPOSITORY` may be passed multiple times
  - `--addon` only accepts repository names that are present in `.repositories/` (e.g. cloned through `odoo repo add`)
  - `--addon` is a creation-time checkout action; addon membership is thereafter determined by the directories present at the worktree root, not by any stored list

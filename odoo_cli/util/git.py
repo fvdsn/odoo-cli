@@ -112,6 +112,19 @@ class Git:
         )
         return result.stdout.strip()
 
+    def current_branch(self, checkout: Path) -> str | None:
+        """Checked-out branch of a working tree; None when HEAD is detached."""
+        result = self._runner.run(
+            ["git", "-C", checkout, "symbolic-ref", "--quiet", "--short", "HEAD"],
+            check=False,
+        )
+        branch = result.stdout.strip()
+        return branch if result.returncode == 0 and branch else None
+
+    def head_commit(self, checkout: Path) -> str:
+        result = self._runner.run(["git", "-C", checkout, "rev-parse", "HEAD"])
+        return result.stdout.strip()
+
     def list_branches(self, repo: Path) -> list[str]:
         result = self._runner.run(
             ["git", "-C", repo, "for-each-ref", "refs/heads", "--format=%(refname:short)"]

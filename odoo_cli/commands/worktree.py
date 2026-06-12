@@ -39,9 +39,13 @@ def create(
 ) -> None:
     """Create worktree NAME from SOURCE.
 
-    Every repo gets a branch NAME starting at SOURCE, a version
-    (`odoo worktree create fix-pos 19.0`). With a single argument, the
-    name is also the source and must resolve to an Odoo ref
+    Every repo gets a branch NAME starting at SOURCE: a version
+    (`odoo worktree create fix-pos 19.0`) or an existing worktree to
+    duplicate (`odoo worktree create customer-b customer-a`) — every repo
+    the source worktree has, addons included, branches from the source's
+    checkouts; duplicating a linked worktree yields another linked
+    worktree on the same original. With a single argument, the name is
+    also the source and must resolve to an Odoo ref
     (`odoo worktree create 19.0`, `... master`).
 
     With --linked, SOURCE names an existing worktree whose checkouts are
@@ -65,28 +69,26 @@ def create(
             result = services.worktrees.create_linked(
                 workspace, name, source, list(addons)
             )
+        elif source != name and (workspace.root / source / "odoo").exists():
+            # a worktree source wins over a ref of the same name; both
+            # readings coincide for version-named worktrees
+            result = services.worktrees.create_duplicate(workspace, name, source)
         else:
             result = services.worktrees.create_full(workspace, name, source)
     except VersionNotFound as exc:
-        if exc.hint is None:
-            if single_argument:
-                exc.hint = (
-                    f"'{name}' does not resolve to an Odoo version; use "
-                    "`odoo worktree create NAME VERSION` to name a worktree "
-                    "freely"
-                )
-            elif (workspace.root / source / "odoo").exists():
-                exc.hint = (
-                    f"'{source}' is a worktree; share its checkouts with "
-                    f"`odoo worktree create {name} {source} --linked` "
-                    "(duplicating a worktree is not supported yet)"
-                )
+        if single_argument and exc.hint is None:
+            exc.hint = (
+                f"'{name}' does not resolve to an Odoo version; use "
+                "`odoo worktree create NAME VERSION` to name a worktree freely"
+            )
         raise
 
     if result.existed:
         out.echo(f"worktree {name} already exists; added only what was missing")
+    # a duplicated linked worktree links to the source's original, not the source
+    link_source = result.worktree.linked_from or source
     for repo_name in result.linked:
-        out.echo(f"linked {repo_name} from {source}")
+        out.echo(f"linked {repo_name} from {link_source}")
     for repo_name in result.checked_out:
         out.echo(f"checked out {repo_name}")
     for skipped in result.skipped:

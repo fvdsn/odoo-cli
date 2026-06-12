@@ -137,6 +137,138 @@ class TestCreateLinked(LinkedWorktreeTestCase):
         self.assertTrue(prunes)
 
 
+class TestCreateDuplicate(LinkedWorktreeTestCase):
+    def expect_branch(self, worktree, repo, branch):
+        path = str(self.root / worktree / repo)
+        self.runner.expect(
+            "git", "-C", path, "symbolic-ref", stdout=f"{branch}\n"
+        )
+
+    def expect_no_leftover_branch(self, repo, name):
+        self.runner.expect(
+            "git", "-C", self.repo_path(repo), "rev-parse",
+            "--verify", "--quiet", f"refs/heads/{name}", returncode=1,
+        )
+
+    def test_duplicates_every_repo_from_source_branches(self):
+        for repo in ("odoo", "documentation", "enterprise"):
+            self.expect_branch("19.0", repo, "19.0")
+            self.expect_no_leftover_branch(repo, "fix-pos")
+
+        result = self.service.create_duplicate(self.workspace, "fix-pos", "19.0")
+
+        self.assertEqual(
+            result.checked_out, ["odoo", "documentation", "enterprise"]
+        )
+        self.assertEqual(result.linked, [])
+        self.assertIn(
+            (
+                "git", "-C", self.repo_path("odoo"), "worktree", "add", "-b",
+                "fix-pos", str(self.root / "fix-pos" / "odoo"), "19.0",
+            ),
+            self.runner.calls,
+        )
+
+    def test_detached_source_branches_from_the_commit(self):
+        odoo_dir = str(self.root / "19.0" / "odoo")
+        self.runner.expect("git", "-C", odoo_dir, "symbolic-ref", returncode=1)
+        self.runner.expect(
+            "git", "-C", odoo_dir, "rev-parse", "HEAD", stdout="abc123\n"
+        )
+        for repo in ("documentation", "enterprise"):
+            self.expect_branch("19.0", repo, "19.0")
+        for repo in ("odoo", "documentation", "enterprise"):
+            self.expect_no_leftover_branch(repo, "fix-pos")
+
+        self.service.create_duplicate(self.workspace, "fix-pos", "19.0")
+
+        add = next(
+            c for c in self.runner.calls
+            if "add" in c and str(self.root / "fix-pos" / "odoo") in c
+        )
+        self.assertEqual(add[-1], "abc123")
+
+    def test_non_repo_entries_are_skipped_or_ignored(self):
+        tools = self.root / "19.0" / "support-tools"
+        tools.mkdir()
+        (tools / ".git").write_text("gitdir: elsewhere\n")
+        (self.root / "19.0" / "dumps").mkdir()
+        (self.root / "19.0" / "notes.txt").write_text("x\n")
+        for repo in ("odoo", "documentation", "enterprise"):
+            self.expect_branch("19.0", repo, "19.0")
+            self.expect_no_leftover_branch(repo, "fix-pos")
+
+        result = self.service.create_duplicate(self.workspace, "fix-pos", "19.0")
+
+        self.assertEqual([s.name for s in result.skipped], ["support-tools"])
+        self.assertIn("no repository", result.skipped[0].reason)
+        self.assertFalse((self.root / "fix-pos" / "dumps").exists())
+
+    def test_duplicate_of_linked_worktree_links_to_the_original(self):
+        make_worktree(
+            self.root, "customer-a", linked_from="19.0",
+            repos=("documentation", "enterprise"),
+        )
+        (self.root / "customer-a" / "customer-a-addons").mkdir()
+        self.expect_branch("customer-a", "customer-a-addons", "customer-a")
+        self.expect_no_leftover_branch("customer-a-addons", "customer-b")
+
+        result = self.service.create_duplicate(
+            self.workspace, "customer-b", "customer-a"
+        )
+
+        path = self.root / "customer-b"
+        self.assertEqual(result.linked, ["odoo", "documentation", "enterprise"])
+        self.assertEqual(result.checked_out, ["customer-a-addons"])
+        # linked to the original, not chained through customer-a
+        self.assertEqual(os.readlink(path / "odoo"), "../19.0/odoo")
+        wt = Worktree(name="customer-b", path=path)
+        self.assertTrue(wt.is_linked)
+        self.assertEqual(wt.linked_from, "19.0")
+        # the addon branches from customer-a's branch, not from 19.0
+        self.assertIn(
+            (
+                "git", "-C", self.repo_path("customer-a-addons"), "worktree",
+                "add", "-b", "customer-b",
+                str(path / "customer-a-addons"), "customer-a",
+            ),
+            self.runner.calls,
+        )
+
+    def test_rerun_adds_missing_repos_only(self):
+        make_worktree(
+            self.root, "fix-pos", version="19.0", repos=("documentation",)
+        )
+        for repo in ("odoo", "documentation", "enterprise"):
+            self.expect_branch("19.0", repo, "19.0")
+        self.expect_no_leftover_branch("enterprise", "fix-pos")
+
+        result = self.service.create_duplicate(self.workspace, "fix-pos", "19.0")
+
+        self.assertTrue(result.existed)
+        self.assertEqual(result.checked_out, ["enterprise"])
+
+    def test_rerun_with_different_version_fails(self):
+        from odoo_cli.core.errors import WorktreeExists
+
+        make_worktree(self.root, "fix-pos", version="18.0")
+        with self.assertRaises(WorktreeExists) as cm:
+            self.service.create_duplicate(self.workspace, "fix-pos", "19.0")
+        self.assertIn("18.0", cm.exception.message)
+
+    def test_rerun_nature_mismatch_fails(self):
+        from odoo_cli.core.errors import WorktreeExists
+
+        make_worktree(self.root, "customer-b", linked_from="19.0")
+        with self.assertRaises(WorktreeExists) as cm:
+            self.service.create_duplicate(self.workspace, "customer-b", "19.0")
+        self.assertIn("linked", cm.exception.message)
+
+    def test_source_must_exist(self):
+        with self.assertRaises(WorktreeNotFound):
+            self.service.create_duplicate(self.workspace, "x", "nope")
+
+
 class TestCompleteLinked(LinkedWorktreeTestCase):
     def test_rerun_checks_out_missing_addon(self):
         # interrupted after the symlinks: the linked worktree is valid but

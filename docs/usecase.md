@@ -372,3 +372,28 @@ Source of truth:
 - `--addon` is a creation-time checkout action only
 - commands run from inside `customer-a/` target the linked worktree even though
   the symlinked paths physically point into `19.0/` (logical `$PWD` resolution)
+
+## 6b. Duplicating a worktree
+
+Goal: a developer wants another worktree shaped like an existing one — a second
+customer on the same setup, or a parallel branch of a feature worktree.
+
+Commands:
+
+```bash
+odoo worktree create customer-b customer-a   # SOURCE is a worktree: duplicate it
+odoo worktree create hotfix fix-pos          # fork a full worktree's branches
+```
+
+Source of truth:
+
+- a SOURCE that names an existing worktree duplicates it; otherwise SOURCE is
+  a version/ref as usual (the readings coincide for version-named worktrees)
+- every repo the source has — addons included — is checked out on a branch
+  named after the new worktree, starting from the source repo's current branch
+- duplication preserves the worktree's nature: `customer-b` comes out linked
+  to `19.0` (the same original as `customer-a`, never a symlink chain) with
+  its own checkout of `customer-a-addons`; `hotfix` comes out as a full
+  worktree with branches forked from `fix-pos`
+- uncommitted changes in the source are not copied; branches fork from the
+  source's committed HEAD
