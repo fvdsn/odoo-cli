@@ -6,6 +6,7 @@ branches, blobless or not) belongs to core services.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
 from odoo_cli.util.process import ProcessRunner
@@ -47,19 +48,24 @@ class Git:
         argv += [url, dest]
         self._runner.run(argv)
 
-    def fetch(self, repo: Path) -> None:
-        """Update a bare repo's local branches from origin."""
-        self._runner.run(
-            [
-                "git",
-                "-C",
-                repo,
-                "fetch",
-                "origin",
-                "+refs/heads/*:refs/heads/*",
-                "--prune",
-            ]
-        )
+    def fetch(self, repo: Path, *, exclude_branches: Iterable[str] = ()) -> None:
+        """Update a bare repo's local branches from origin.
+
+        `exclude_branches` (negative refspecs, git >= 2.29) must list the
+        branches checked out in attached worktrees: git refuses to update
+        those and aborts the whole fetch. No --prune: local-only branches
+        (worktree feature branches) are never deleted by a fetch.
+        """
+        argv: list[str | Path] = [
+            "git",
+            "-C",
+            repo,
+            "fetch",
+            "origin",
+            "+refs/heads/*:refs/heads/*",
+        ]
+        argv += [f"^refs/heads/{branch}" for branch in exclude_branches]
+        self._runner.run(argv)
 
     def config_get(self, repo: Path, key: str) -> str | None:
         result = self._runner.run(
@@ -82,6 +88,16 @@ class Git:
         if result.returncode != 0:
             return None
         return result.stdout.strip() or None
+
+    def has_valid_head(self, repo: Path) -> bool:
+        """False for a directory that is not a repository or whose HEAD does
+        not resolve — the signature of a clone that died mid-transfer (git
+        writes the refs only after fetching the objects)."""
+        result = self._runner.run(
+            ["git", "-C", repo, "rev-parse", "--verify", "--quiet", "HEAD"],
+            check=False,
+        )
+        return result.returncode == 0
 
     def branch_exists(self, repo: Path, branch: str) -> bool:
         result = self._runner.run(
@@ -144,3 +160,12 @@ class Git:
             if line.startswith("worktree "):
                 paths.append(Path(line.removeprefix("worktree ")))
         return paths
+
+    def worktree_branches(self, repo: Path) -> list[str]:
+        """Branches checked out in worktrees attached to this repository."""
+        result = self._runner.run(["git", "-C", repo, "worktree", "list", "--porcelain"])
+        branches = []
+        for line in result.stdout.splitlines():
+            if line.startswith("branch refs/heads/"):
+                branches.append(line.removeprefix("branch refs/heads/"))
+        return branches

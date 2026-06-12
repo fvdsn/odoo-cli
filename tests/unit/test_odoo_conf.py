@@ -36,6 +36,29 @@ class TestOdooConf(unittest.TestCase):
         self.assertEqual(reloaded.get("proxy_mode"), "True")
         self.assertEqual(reloaded.get("db_user"), "dev")
 
+    def test_malformed_file_raises_typed_error(self):
+        # a hand-edit gone wrong must not brick every command (including
+        # `odoo config set`, the repair tool) with a parser traceback
+        from odoo_cli.core.errors import OdooCliError
+
+        self.path.parent.mkdir(parents=True)
+        self.path.write_text("db_user = me\n")  # no [options] header
+        with self.assertRaises(OdooCliError) as cm:
+            OdooConf.load(self.path)
+        self.assertIn(str(self.path), cm.exception.message)
+        self.assertIn("odoo init", cm.exception.hint)
+
+    def test_percent_in_values_is_literal(self):
+        # odoo-bin parses odoo.conf with RawConfigParser: '%' has no special
+        # meaning, and a password containing one must round-trip untouched
+        write_defaults(self.path)
+        conf = OdooConf.load(self.path)
+        conf.set("db_password", "p%ss%%word")
+        conf.save()
+        reloaded = OdooConf.load(self.path)
+        self.assertEqual(reloaded.get("db_password"), "p%ss%%word")
+        self.assertEqual(reloaded.items(reveal=True)["db_password"], "p%ss%%word")
+
     def test_items_redacts_secrets(self):
         write_defaults(self.path)
         conf = OdooConf.load(self.path)

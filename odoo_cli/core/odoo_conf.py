@@ -16,6 +16,8 @@ import os
 import tempfile
 from pathlib import Path
 
+from odoo_cli.core.errors import OdooCliError
+
 SECTION = "options"
 
 #: Keys whose values are redacted in any listing output.
@@ -37,17 +39,31 @@ DEFAULTS: dict[str, str] = {
 
 
 class OdooConf:
-    def __init__(self, path: Path, parser: configparser.ConfigParser):
+    def __init__(self, path: Path, parser: configparser.RawConfigParser):
         self.path = path
         self._parser = parser
 
     @classmethod
     def load(cls, path: Path) -> OdooConf:
         """Load the conf; a missing file yields an empty conf (not an error:
-        commands other than init still run, odoo-bin applies its defaults)."""
-        parser = configparser.ConfigParser()
+        commands other than init still run, odoo-bin applies its defaults).
+
+        RawConfigParser matches odoo-bin's own parser: `%` has no special
+        meaning, so values like a password containing `%` stay legal.
+
+        A hand-edit that breaks the ini syntax must not take down every
+        command with a parser traceback — `odoo config set` is the repair
+        tool and has to keep working."""
+        parser = configparser.RawConfigParser()
         if path.exists():
-            parser.read(path)
+            try:
+                parser.read(path)
+            except configparser.Error as exc:
+                reason = exc.message.splitlines()[0]  # ParsingError is multi-line
+                raise OdooCliError(
+                    f"could not parse {path}: {reason}",
+                    hint="fix the file by hand, or delete it and re-run `odoo init`",
+                ) from exc
         if not parser.has_section(SECTION):
             parser.add_section(SECTION)
         return cls(path, parser)

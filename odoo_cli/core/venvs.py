@@ -54,20 +54,27 @@ class VenvService:
         path = self.venv_path(workspace, worktree)
         if (path / READY_MARKER).is_file() and self.python_path(path).exists():
             return VenvResult(path=path, created=False)
-        if path.exists():
-            # incomplete (no ready marker): a failed creation may have left
-            # stale state behind; recreate from scratch
-            shutil.rmtree(path)
+        # incomplete (no ready marker): a failed creation may have left
+        # stale state behind; recreate from scratch
+        self._remove(path)
         self._create(path, worktree)
         return VenvResult(path=path, created=True)
 
     def rebuild(self, workspace: Workspace, worktree: Worktree) -> VenvResult:
         """`odoo venv`: recreate from scratch."""
         path = self.venv_path(workspace, worktree)
-        if path.exists():
-            shutil.rmtree(path)
+        self._remove(path)
         self._create(path, worktree)
         return VenvResult(path=path, created=True)
+
+    @staticmethod
+    def _remove(path: Path) -> None:
+        """Remove whatever sits at the venv path: a directory, or — after
+        manual tampering — a file or symlink (deleted, never followed)."""
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif path.exists() or path.is_symlink():
+            path.unlink()
 
     def _create(self, path: Path, worktree: Worktree) -> None:
         info = release.read_release(worktree.path)

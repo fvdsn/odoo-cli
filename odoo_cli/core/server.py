@@ -10,6 +10,8 @@ a newly created reservation rolls back when that final check fails.
 
 from __future__ import annotations
 
+import os
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -33,12 +35,18 @@ class RunStateStore:
         return self._parse(self.run_dir(target) / "ports")
 
     def write_ports(self, target: Target, ports: Ports) -> None:
-        """Atomic write: temp file + rename."""
+        """Atomic write: unique temp file + rename (a fixed temp name would
+        let two concurrent starts interleave write and rename)."""
         run_dir = self.run_dir(target)
         run_dir.mkdir(parents=True, exist_ok=True)
-        tmp = run_dir / ".ports.tmp"
-        tmp.write_text(f"http={ports.http}\ngevent={ports.gevent}\n")
-        tmp.replace(run_dir / "ports")
+        fd, tmp = tempfile.mkstemp(dir=run_dir, prefix=".ports.")
+        try:
+            with os.fdopen(fd, "w") as fh:
+                fh.write(f"http={ports.http}\ngevent={ports.gevent}\n")
+            os.replace(tmp, run_dir / "ports")
+        except BaseException:
+            os.unlink(tmp)
+            raise
 
     def delete_ports(self, target: Target) -> None:
         (self.run_dir(target) / "ports").unlink(missing_ok=True)

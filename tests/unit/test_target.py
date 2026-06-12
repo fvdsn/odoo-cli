@@ -121,8 +121,17 @@ class TestDatabaseResolution(TargetTestCase):
     def test_default_db_from_unsafe_worktree_name_is_rejected(self):
         # discovery trusts the filesystem; a manually created directory can
         # carry characters that must never reach SQL literals
-        from odoo_cli.core.errors import InvalidWorktreeName
+        from odoo_cli.core.errors import InvalidName
 
         make_worktree(self.root, "bad'name", version="19.0")
-        with self.assertRaises(InvalidWorktreeName):
+        with self.assertRaises(InvalidName):
             self.resolver().resolve()
+
+    def test_explicit_option_shaped_db_name_is_rejected(self):
+        # db names become argv positionals (createdb, dropdb, psql); a
+        # leading '-' would be parsed as an option by those tools
+        from odoo_cli.core.errors import InvalidName
+
+        make_worktree(self.root, "19.0", version="19.0")
+        with self.assertRaises(InvalidName):
+            self.resolver().resolve(db="-customer")

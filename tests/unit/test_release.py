@@ -41,3 +41,14 @@ class TestReadRelease(unittest.TestCase):
     def test_missing_release_py(self):
         with self.assertRaises(InvalidWorkspace):
             read_release(self.worktree)
+
+    def test_dead_linked_source_is_named(self):
+        # a linked worktree whose source was deleted: the error must point
+        # at the missing source, not at a release.py deep inside it
+        import os
+
+        os.symlink("../19.0/odoo", self.worktree / "odoo")
+        with self.assertRaises(InvalidWorkspace) as cm:
+            read_release(self.worktree)
+        self.assertIn("'19.0' no longer exists", cm.exception.message)
+        self.assertIn("worktree create 19.0", cm.exception.hint)

@@ -63,6 +63,8 @@ def create(
             )
         raise
 
+    if result.existed:
+        out.echo(f"worktree {name} already exists; added only what was missing")
     for repo_name in result.linked:
         out.echo(f"linked {repo_name} from {linked_from}")
     for repo_name in result.checked_out:

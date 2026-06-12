@@ -26,10 +26,25 @@ from pathlib import Path
 
 from odoo_cli.core import paths, release
 from odoo_cli.core.addons import resolve_addons_paths
-from odoo_cli.core.errors import UnsupportedOdooVersion
+from odoo_cli.core.errors import ProcessFailed, UnsupportedOdooVersion
 from odoo_cli.core.models import OdooBinCommand, Ports, Target
+from odoo_cli.util.process import ProcessRunner
 
 MIN_SUPPORTED_MAJOR = 17
+
+
+def run_streamed(runner: ProcessRunner, command: OdooBinCommand) -> None:
+    """Stream an odoo-bin command in the terminal, raising on failure.
+
+    The shared execution path for install/update/init runs: output goes to
+    the terminal as it happens (a module install can take minutes)."""
+    code = runner.stream(command.argv, cwd=command.cwd, extra_env=command.env)
+    if code != 0:
+        raise ProcessFailed(
+            f"{command.purpose} failed (odoo-bin exited {code})",
+            argv=command.redacted_argv,
+            returncode=code,
+        )
 
 
 @dataclass(frozen=True)

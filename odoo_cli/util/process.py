@@ -76,9 +76,14 @@ class ProcessRunner:
         extra_env: dict[str, str] | None = None,
     ) -> int:
         """Run attached to the terminal (foreground server, interactive
-        shells). Returns the exit code; never raises on non-zero."""
-        return subprocess.call(
+        shells). Returns the exit code; never raises on non-zero.
+
+        Signal deaths (subprocess reports -N) are normalized to the shell
+        convention 128+N, so callers always see a sane code — e.g. a
+        SIGINT-killed child yields 130, never a negative sys.exit value."""
+        code = subprocess.call(
             [str(a) for a in argv],
             cwd=cwd,
             env=_merged_env(extra_env),
         )
+        return code if code >= 0 else 128 - code

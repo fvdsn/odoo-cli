@@ -118,7 +118,7 @@ odoo_cli/
         main.py              # click group registration
         context.py           # CLI context object and option normalization
         output.py            # plain/text/json output helpers
-        prompts.py           # click.prompt/click.confirm wrappers
+        prompts.py           # v2 (config wizard): click.prompt/click.confirm wrappers
 
     commands/
         __init__.py
@@ -407,6 +407,9 @@ Responsibilities:
 
 - create full worktrees
 - create linked worktrees
+- converge on re-runs: repair provable leftovers of an interrupted creation,
+  complete an existing valid worktree (add missing checkouts/symlinks), and
+  prune stale git registrations before checkouts
 - list worktrees
 - remove worktrees
 - validate worktree names
@@ -494,7 +497,9 @@ Responsibilities:
 
 - `ensure_initialized(target)`: create and initialize the database empty (no
   modules) when it does not exist; called by every command that needs an
-  initialized database
+  initialized database. Existence is not trusted as initialization: an
+  existing database without an initialized registry (interrupted first
+  start) is initialized the same way
 - reset DB: read the currently installed modules, drop/recreate, reinstall that set
 - expose `db shell` and `db query`
 

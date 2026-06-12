@@ -26,6 +26,14 @@ class TestProcessRunner(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 3)
 
+    def test_stream_normalizes_signal_death_to_shell_convention(self):
+        # subprocess reports a signal-killed child as -N; callers must see
+        # 128+N (e.g. 130 for SIGINT), never a negative sys.exit value
+        code = self.runner.stream(
+            [sys.executable, "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"]
+        )
+        self.assertEqual(code, 137)
+
     def test_extra_env_is_merged(self):
         result = self.runner.run(
             [sys.executable, "-c", "import os; print(os.environ['ODOO_CLI_X'])"],

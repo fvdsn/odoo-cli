@@ -122,6 +122,11 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
     def test_single_argument_must_be_a_version(self):
         repo = str(self.repos() / "odoo.git")
         self.runner.expect("git", "-C", repo, "rev-parse", returncode=1)
+        # the repo itself is healthy; only the branch lookup fails
+        self.runner.expect(
+            "git", "-C", repo, "rev-parse", "--verify", "--quiet", "HEAD",
+            stdout="abc123\n",
+        )
         result = self.invoke("worktree", "create", "my-feature")
         self.assertEqual(result.exit_code, 1)
         self.assertIn("NAME VERSION", result.exception.hint)

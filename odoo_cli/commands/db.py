@@ -25,6 +25,11 @@ def reset(ctx: CliContext, worktree: str | None, database: str | None) -> None:
     target = services.targets.resolve(worktree=worktree, db=database)
     venv = services.venvs.ensure(target.workspace, target.worktree)
     python = services.venvs.python_path(venv.path)
+    # announce the set before dropping: if the reset is interrupted, the
+    # list (which lives only in the database being dropped) is on screen
+    to_reinstall = services.database.resettable_modules(target)
+    if to_reinstall:
+        out.echo(f"will reinstall after reset: {', '.join(to_reinstall)}")
     reinstalled = services.database.reset(target, python=python)
     if reinstalled:
         out.success(

@@ -48,7 +48,6 @@ class TestStart(CommandTestCase):
             "WHERE state = 'installed' AND application",
             stdout=apps,
         )
-        self.runner.expect(str(self.venv / "bin" / "python"), stdout="")
 
     def test_start_streams_server_and_reserves_ports(self):
         self.script()
@@ -72,11 +71,10 @@ class TestStart(CommandTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("Initialized empty database", result.output)
         self.assertIn(("createdb", "19.0"), self.runner.calls)
-        init_run = next(
-            c for c in self.runner.calls
-            if c[0] == str(self.venv / "bin" / "python")
-        )
+        # the init run is streamed (live output), then the server itself
+        init_run, server_run = self.runner.stream_calls
         self.assertIn("--stop-after-init", init_run)
+        self.assertNotIn("--stop-after-init", server_run)
 
     def test_start_hints_when_no_app_installed(self):
         self.script(apps="")

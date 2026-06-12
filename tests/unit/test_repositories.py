@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 from odoo_cli.core.errors import (
-    InvalidWorktreeName,
+    InvalidName,
     OdooCliError,
     RepositoryExists,
     RepositoryNotFound,
@@ -28,6 +28,12 @@ class RepositoryTestCase(unittest.TestCase):
 
     def allow_git_version(self, version="2.54.0"):
         self.runner.expect("git", "--version", stdout=f"git version {version}\n")
+
+    def allow_valid_head(self, name="odoo"):
+        self.runner.expect(
+            "git", "-C", str(self.root / ".repositories" / f"{name}.git"),
+            "rev-parse", "--verify", "--quiet", "HEAD", stdout="abc123\n",
+        )
 
 
 class TestListing(RepositoryTestCase):
@@ -94,8 +100,9 @@ class TestAdd(RepositoryTestCase):
             self.service.add(self.workspace, "odoo", "git@example.com:o.git")
 
     def test_add_rejects_invalid_names(self):
-        for bad in ("", "a/b", "a b", ".repositories"):
-            with self.assertRaises(InvalidWorktreeName):
+        # leading '-' and '.' included: names end up as argv positionals
+        for bad in ("", "a/b", "a b", ".repositories", "-foo", ".", "..", ".hidden"):
+            with self.assertRaises(InvalidName):
                 self.service.add(self.workspace, bad, "git@example.com:x.git")
 
 
@@ -133,6 +140,7 @@ class TestCloneOrFetch(RepositoryTestCase):
             stdout="https://github.com/odoo/odoo.git\n",
         )
         self.allow_git_version()
+        self.allow_valid_head()
 
         self.service.clone_or_fetch(self.workspace, "odoo", full=True)
 
@@ -172,6 +180,7 @@ class TestCloneOrFetch(RepositoryTestCase):
             stdout="https://github.com/odoo/odoo.git\n",
         )
         self.allow_git_version()
+        self.allow_valid_head()
 
         with self.assertRaises(OdooCliError):
             self.service.clone_or_fetch(self.workspace, "odoo", full=True)
@@ -206,11 +215,43 @@ class TestCloneOrFetch(RepositoryTestCase):
             stdout="https://github.com/odoo/odoo.git\n",
         )
         self.allow_git_version("2.39.1")
+        self.allow_valid_head()
 
         self.service.clone_or_fetch(self.workspace, "odoo")
 
         clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertNotIn("--filter=blob:none", clone)
+
+    def test_fetch_excludes_checked_out_branches_and_never_prunes(self):
+        """P1 regression: git refuses to fetch into a branch checked out in
+        a worktree and aborts the whole fetch, so a re-run on an existing
+        workspace must exclude those branches; --prune would delete
+        local-only worktree feature branches."""
+        repo = str(self.root / ".repositories" / "odoo.git")
+        self.runner.expect("git", stdout="")
+        self.allow_git_version()
+        self.runner.expect(
+            "git", "-C", repo, "remote",
+            stdout="https://github.com/odoo/odoo.git\n",
+        )
+        self.runner.expect(
+            "git", "-C", repo, "worktree", "list",
+            stdout=(
+                f"worktree {repo}\nbare\n\n"
+                f"worktree {self.root / '19.0' / 'odoo'}\n"
+                "HEAD abc123\nbranch refs/heads/19.0\n\n"
+                f"worktree {self.root / 'fix-pos' / 'odoo'}\n"
+                "HEAD def456\nbranch refs/heads/fix-pos\n"
+            ),
+        )
+
+        self.service.clone_or_fetch(self.workspace, "odoo")
+
+        fetch = next(c for c in self.runner.calls if "fetch" in c)
+        self.assertIn("+refs/heads/*:refs/heads/*", fetch)
+        self.assertIn("^refs/heads/19.0", fetch)
+        self.assertIn("^refs/heads/fix-pos", fetch)
+        self.assertNotIn("--prune", fetch)
 
     def test_clone_mode_reports_effective_strategy(self):
         self.allow_git_version("2.54.0")
@@ -251,6 +292,53 @@ class TestCloneOrFetch(RepositoryTestCase):
         self.assertEqual(clones, [])
         fetches = [c for c in self.runner.calls if "fetch" in c]
         self.assertEqual(len(fetches), 1)
+
+
+class TestCorruptClones(RepositoryTestCase):
+    """A directory left by an interrupted `git clone --bare` (crash, SIGKILL)
+    has no resolvable HEAD; re-runs must replace it, never loop on it."""
+
+    def corrupt_head(self, name="odoo"):
+        self.runner.expect(
+            "git", "-C", str(self.root / ".repositories" / f"{name}.git"),
+            "rev-parse", "--verify", "--quiet", "HEAD", returncode=128,
+        )
+
+    def clone_effect(self, call):
+        Path(call[-1]).mkdir(parents=True, exist_ok=True)
+
+    def test_clone_or_fetch_replaces_interrupted_clone(self):
+        self.runner.expect("git", stdout="")
+        self.allow_git_version()
+        self.corrupt_head()
+        self.runner.expect("git", "clone", effect=self.clone_effect)
+
+        spec = self.service.clone_or_fetch(self.workspace, "odoo")
+
+        self.assertEqual(spec.url, "https://github.com/odoo/odoo.git")
+        clones = [c for c in self.runner.calls if c[:2] == ("git", "clone")]
+        self.assertEqual(len(clones), 1)
+        self.assertFalse(any("fetch" in c for c in self.runner.calls))
+        self.assertTrue((self.root / ".repositories" / "odoo.git").is_dir())
+        # no .old leftovers once the swap completed
+        self.assertEqual(
+            [p.name for p in self.root.glob(".repositories/.*old*")], []
+        )
+
+    def test_add_replaces_interrupted_clone(self):
+        (self.root / ".repositories" / "customer-a-addons.git").mkdir()
+        self.runner.expect("git", stdout="")
+        self.allow_git_version()
+        self.corrupt_head("customer-a-addons")
+        self.runner.expect("git", "clone", effect=self.clone_effect)
+
+        spec = self.service.add(
+            self.workspace, "customer-a-addons", "git@example.com:a.git"
+        )
+
+        self.assertEqual(spec.url, "git@example.com:a.git")
+        clones = [c for c in self.runner.calls if c[:2] == ("git", "clone")]
+        self.assertEqual(len(clones), 1)
 
 
 class TestVersions(RepositoryTestCase):

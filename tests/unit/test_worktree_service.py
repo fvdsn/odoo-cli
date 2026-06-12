@@ -9,7 +9,7 @@ from odoo_cli.core.worktrees import WorktreeService
 from odoo_cli.util.git import Git
 from odoo_cli.util.process import ProcessError
 from tests.fixtures.process import FakeProcessRunner
-from tests.fixtures.workspace import make_workspace
+from tests.fixtures.workspace import make_workspace, make_worktree
 
 
 class WorktreeServiceTestCase(unittest.TestCase):
@@ -95,11 +95,74 @@ class TestCreateFull(WorktreeServiceTestCase):
         with self.assertRaises(VersionNotFound):
             self.service.create_full(ws, "6.1", "6.1")
 
-    def test_existing_directory_fails(self):
+    def test_existing_directory_with_user_data_fails(self):
         ws = self.workspace()
         (ws.root / "19.0").mkdir()
+        (ws.root / "19.0" / "notes.txt").write_text("keep me\n")
         with self.assertRaises(WorktreeExists):
             self.service.create_full(ws, "19.0", "19.0")
+        self.assertTrue((ws.root / "19.0" / "notes.txt").is_file())
+
+    def test_existing_empty_directory_is_repaired(self):
+        # an empty directory is the leftover of a creation interrupted
+        # right after mkdir; removing it loses nothing
+        ws = self.workspace()
+        (ws.root / "19.0").mkdir()
+        self.allow_remote_urls()
+        result = self.service.create_full(ws, "19.0", "19.0")
+        self.assertEqual(result.checked_out, ["odoo", "documentation"])
+        self.assertTrue(any("recreating" in w for w in result.warnings))
+
+    def test_interrupted_creation_leftover_is_repaired(self):
+        # partial checkout (broken gitdir) from a previous Ctrl-C
+        ws = self.workspace()
+        incomplete = ws.root / "19.0" / "odoo"
+        incomplete.mkdir(parents=True)
+        (incomplete / ".git").write_text("gitdir: broken\n")
+        self.allow_remote_urls()
+        result = self.service.create_full(ws, "19.0", "19.0")
+        self.assertEqual(result.checked_out, ["odoo", "documentation"])
+        self.assertTrue(any("recreating" in w for w in result.warnings))
+
+    def test_create_prunes_stale_registrations_first(self):
+        # `rm -rf <worktree>` leaves git registrations that block the same
+        # worktree from being created again until a prune runs
+        ws = self.workspace()
+        self.allow_remote_urls()
+        self.service.create_full(ws, "19.0", "19.0")
+        prunes = [c for c in self.runner.calls if c[-2:] == ("worktree", "prune")]
+        adds = [c for c in self.runner.calls if ("worktree", "add") == c[3:5]]
+        self.assertTrue(prunes, "no prune before checkout")
+        self.assertLess(
+            self.runner.calls.index(prunes[0]),
+            self.runner.calls.index(adds[0]),
+            "prune must happen before the first checkout",
+        )
+
+    def test_rerun_completes_missing_standard_checkout(self):
+        # interrupted after `odoo` finished: the worktree is valid but
+        # incomplete; re-running create adds only what is missing
+        ws = self.workspace()
+        make_worktree(ws.root, "19.0", version="19.0", repos=())
+        self.allow_remote_urls()
+        result = self.service.create_full(ws, "19.0", "19.0")
+        self.assertTrue(result.existed)
+        self.assertEqual(result.checked_out, ["documentation"])
+        add = next(c for c in self.runner.calls if c[3:5] == ("worktree", "add"))
+        self.assertIn(str(ws.root / "19.0" / "documentation"), add)
+
+    def test_rerun_with_wrong_version_fails(self):
+        ws = self.workspace()
+        make_worktree(ws.root, "myft", version="19.0")
+        with self.assertRaises(WorktreeExists):
+            self.service.create_full(ws, "myft", "18.0")
+
+    def test_full_create_on_linked_worktree_fails(self):
+        ws = self.workspace()
+        make_worktree(ws.root, "19.0", version="19.0")
+        make_worktree(ws.root, "cust", linked_from="19.0")
+        with self.assertRaises(WorktreeExists):
+            self.service.create_full(ws, "cust", "19.0")
 
     def test_failed_checkout_cleans_partial_directory_and_prunes(self):
         ws = self.workspace()

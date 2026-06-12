@@ -137,6 +137,25 @@ class TestInit(InitCommandTestCase):
         self.assertEqual(clones, [])
         self.assertIn("already exists", result.output)
 
+    def test_rerun_offline_warns_and_continues(self):
+        # a re-run on a complete workspace must not require the network:
+        # everything needed is already local, fetch is only freshness
+        self.script_happy_path()
+        first = self.invoke("init")
+        self.assertEqual(first.exit_code, 0, first.output)
+        self.runner.calls.clear()
+        for repo in ("odoo.git", "documentation.git"):
+            self.runner.expect(
+                "git", "-C", str(self.root / ".repositories" / repo), "fetch",
+                returncode=128, stderr="fatal: unable to access remote\n",
+            )
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("offline?", result.output)
+        self.assertIn("Workspace ready", result.output)
+
     def test_rerun_repairs_incomplete_worktree(self):
         self.script_happy_path()
         incomplete = self.root / "19.0" / "odoo"
@@ -147,7 +166,7 @@ class TestInit(InitCommandTestCase):
 
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertTrue((self.root / "19.0" / "odoo" / "odoo" / "release.py").is_file())
-        self.assertIn("incomplete; recreating", result.output)
+        self.assertIn("recreating it", result.output)
         self.assertTrue(any(c[-2:] == ("worktree", "prune") for c in self.runner.calls))
 
     def test_blobless_promisor_checkout_failure_retries_with_full_clone(self):

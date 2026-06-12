@@ -86,4 +86,7 @@ class TestDbReset(ModuleCommandsTestCase):
         self.runner.expect("createdb", stdout="")
         result = self.invoke("db", "reset")
         self.assertEqual(result.exit_code, 0, result.output)
+        # the set is announced before the drop: an interrupted reset would
+        # otherwise silently lose it
+        self.assertIn("will reinstall after reset: crm", result.output)
         self.assertIn("reinstalled: crm", result.output)

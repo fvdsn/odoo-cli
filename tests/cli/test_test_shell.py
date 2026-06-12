@@ -65,6 +65,26 @@ class TestTestCommand(TestShellCommandsTestCase):
         argv = self.runner.stream_calls[0]
         self.assertEqual(argv[argv.index("-i") + 1], "crm,sale")
 
+    def test_installed_spec_initializes_missing_database(self):
+        # right after `odoo init` the target database may not exist yet;
+        # `test installed` ensures it like every database-reading command
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = '19.0'",
+            stdout="",
+        )
+        self.runner.expect("createdb", stdout="")
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT name FROM ir_module_module WHERE state = 'installed'",
+            stdout="base\n",
+        )
+        result = self.invoke("test", "installed")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn(("createdb", "19.0"), self.runner.calls)
+        argv = self.runner.stream_calls[-1]  # db init streams first
+        self.assertEqual(argv[argv.index("-i") + 1], "base")
+
     def test_all_spec_enumerates_addons(self):
         addons = self.root / "19.0" / "odoo" / "addons"
         for module in ("crm", "sale"):

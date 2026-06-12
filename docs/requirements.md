@@ -128,6 +128,19 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
 
 ## Keep the repos pristine, don't abuse .gitignores
 
+## Command idempotency and self-healing
+ - commands are safe to interrupt (Ctrl-C, crash) and re-run: a re-run either
+   completes the work or repairs the leftovers — it never loops on a broken
+   intermediate state and never requires a manual `rm`/`dropdb` to escape
+ - mutations prefer create-aside-then-rename: slow deletions never sit between
+   the user and a usable state
+ - recovery never deletes state that may hold user work; only artifacts
+   provably created by an interrupted CLI run are removed automatically,
+   anything else fails with a move-it-aside hint
+ - "exists" is never trusted as "complete": bare repos are checked for a
+   resolvable HEAD, databases for an initialized registry, venvs for their
+   ready marker
+
 ## Configuration via odoo.conf (no workspace.toml)
  - there is no `workspace.toml`; the CLI keeps no parallel config file of its own
  - rationale: avoid duplicate state and avoid a second, competing source of
@@ -313,6 +326,9 @@ creation, at which point explicit `-c` becomes unnecessary on those versions —
  - commands that need an initialized database ensure it first: a missing target
    database is created and initialized empty (no modules) before the command
    proceeds — so `odoo module install crm` works right after `odoo init`
+ - existence alone is not initialization: a database left empty by an
+   interrupted first start (created, but odoo-bin's base install never
+   finished) is detected and initialized the same way on the next command
 
 ## PostgreSQL credentials
  - PostgreSQL connection settings are workspace-level, not per database
@@ -404,7 +420,9 @@ creation, at which point explicit `-c` becomes unnecessary on those versions —
    ignored; v2 `odoo doctor` flags them
  - one worktree can run multiple servers, each with a different database
  - the worktree directory name is the worktree id
- - worktree names may contain only ASCII letters, digits, `_`, `-`, and `.`
+ - worktree names may contain only ASCII letters, digits, `_`, `-`, and `.`,
+   and must start with a letter, digit, or `_` (names become argv positionals
+   for tools like `createdb` and must never look like command-line options)
  - worktree names cannot be empty, contain path separators, or collide with internal workspace directories (`.repositories`, `.venvs`, `.run`, `.data`)
 
 ## Target flags
@@ -472,6 +490,10 @@ v2 server lifecycle.
  - writes the default `odoo.conf` at `~/.config/odoo/odoo.conf`
  - demo data enabled by default (override with `--no-demo-data` or `without_demo` in `odoo.conf`)
  - on completion: prints clear next steps for the created worktree (`cd ~/odoo/{worktree} && odoo start`)
+ - re-running `odoo init` converges: corrupt partial clones (no resolvable
+   HEAD) are replaced, an incomplete worktree is repaired, a valid one is
+   completed; fetch failures on already-present repos only warn, so offline
+   re-runs still work
  - postgres: check if installed, try to connect with default user
    - if not installed: print install instructions for the platform and exit
    - NOTE: consider auto-installing postgres (apt/brew) if Anthony requires it
@@ -503,6 +525,9 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
 ### `odoo repo enable $REPO [$URL]` [v1]
  - enable a built-in optional repo (`enterprise`, `themes`, `upgrade`); side-effecting
  - clones/fetches the repo into `.repositories/` (e.g. `.repositories/enterprise.git`)
+ - fetching updates origin branches only and never deletes local-only branches
+   (worktree feature branches); branches checked out in worktrees are left to
+   their worktrees (fast-forwarding them is v2 `odoo pull` territory)
  - newly enabled optional repos are automatically available to future worktrees
  - default: adds the repo to all compatible existing worktrees
  - `--future-only` — clone/fetch only; leave existing worktrees untouched
@@ -543,6 +568,10 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
  - `odoo worktree create my-feature` is invalid because `my-feature` does not
    resolve to an Odoo ref/version
  - the version argument is used to choose the initial checkout; it is not persisted (the source is the truth)
+ - re-running `odoo worktree create` converges: the leftover of an interrupted
+   creation is repaired, and an existing valid worktree of the same kind and
+   version is completed (missing standard checkouts, symlinks, and `--addon`
+   checkouts are added; present ones are never touched)
  - includes odoo.git plus any optional repos currently present in `.repositories/` (e.g. `enterprise.git`, `themes.git`)
  - if odoo.git does not have the requested version, fail
  - if an optional repository does not have the requested version, skip that repository and report a warning

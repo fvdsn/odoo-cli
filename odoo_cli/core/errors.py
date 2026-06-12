@@ -35,8 +35,8 @@ class WorktreeExists(OdooCliError):
     pass
 
 
-class InvalidWorktreeName(OdooCliError):
-    pass
+class InvalidName(OdooCliError):
+    """A worktree, repository, or database name breaks the shared name rules."""
 
 
 class RepositoryNotFound(OdooCliError):

@@ -8,6 +8,7 @@ version and supported Python range; nothing is stored. Parsing uses `ast`
 from __future__ import annotations
 
 import ast
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,6 +30,19 @@ def normalize_version(version: str) -> str:
 def read_release(worktree_path: Path) -> ReleaseInfo:
     release_py = worktree_path / "odoo" / "odoo" / "release.py"
     if not release_py.is_file():
+        # every version lookup funnels through here, so this is the one
+        # place that can name the real problem of a dead linked worktree
+        odoo_entry = worktree_path / "odoo"
+        if odoo_entry.is_symlink() and not odoo_entry.exists():
+            source = Path(os.readlink(odoo_entry)).parent.name
+            raise InvalidWorkspace(
+                f"'{worktree_path.name}' is a linked worktree, but its "
+                f"source worktree '{source}' no longer exists",
+                hint=(
+                    f"recreate the source (`odoo worktree create {source}`) "
+                    f"or remove {worktree_path}"
+                ),
+            )
         raise InvalidWorkspace(
             f"{release_py} not found; is this a valid Odoo worktree?"
         )

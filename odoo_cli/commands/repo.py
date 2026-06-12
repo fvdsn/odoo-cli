@@ -69,7 +69,18 @@ def enable(
         )
     workspace = services.workspace.resolve()
     existed = services.repositories.exists(workspace, name)
-    out.echo(f"{'Fetching' if existed else 'Cloning'} {name}...")
+    corrupt = services.repositories.is_corrupt(workspace, name)
+    if existed and not corrupt and url:
+        current = services.repositories.get(workspace, name).url
+        if current and current != url:
+            out.warn(f"{name} is already cloned from {current}; ignoring {url}")
+    if corrupt:
+        action, past = "Recloning (incomplete)", "recloned"
+    elif existed:
+        action, past = "Fetching", "fetched"
+    else:
+        action, past = "Cloning", "cloned"
+    out.echo(f"{action} {name}...")
     services.repositories.clone_or_fetch(workspace, name, url)
 
     added, skipped = [], []
@@ -88,7 +99,7 @@ def enable(
             else:
                 skipped.append((wt_name, result.reason))
 
-    out.success(f"{name} {'fetched' if existed else 'cloned'}")
+    out.success(f"{name} {past}")
     if added:
         out.echo(f"added to: {', '.join(added)}")
     for wt_name, reason in skipped:

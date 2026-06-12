@@ -41,16 +41,26 @@ class DatabaseTestCase(unittest.TestCase):
             stdout="1\n" if exists else "",
         )
 
+    def base_installed(self, installed: bool | None):
+        """None: the query itself fails (no ir_module_module table)."""
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM ir_module_module "
+            "WHERE name = 'base' AND state = 'installed'",
+            stdout="1\n" if installed else "",
+            returncode=2 if installed is None else 0,
+        )
+
 
 class TestEnsureInitialized(DatabaseTestCase):
     def test_creates_missing_database(self):
         self.db_exists(False)
         self.runner.expect("createdb", stdout="")
-        self.runner.expect(str(self.python), stdout="")
         created = self.service.ensure_initialized(self.target, python=self.python)
         self.assertTrue(created)
         self.assertIn(("createdb", "19.0"), self.runner.calls)
-        init_call = self.runner.calls[-1]
+        # the init run is streamed: its output goes to the terminal live
+        init_call = self.runner.stream_calls[-1]
         self.assertIn("--stop-after-init", init_call)
         self.assertIn("--no-http", init_call)
         # "empty" means base only; without -i odoo-bin would not initialize
@@ -58,9 +68,22 @@ class TestEnsureInitialized(DatabaseTestCase):
 
     def test_existing_database_untouched(self):
         self.db_exists(True)
+        self.base_installed(True)
         created = self.service.ensure_initialized(self.target, python=self.python)
         self.assertFalse(created)
-        self.assertEqual(len(self.runner.calls), 1)  # only the existence check
+        self.assertEqual(len(self.runner.calls), 2)  # existence + init probes
+        self.assertEqual(self.runner.stream_calls, [])
+
+    def test_existing_uninitialized_database_is_healed(self):
+        # crash between createdb and the base install: the db exists but
+        # has no registry; every later command must converge, not loop
+        self.db_exists(True)
+        self.base_installed(None)  # query fails: no ir_module_module table
+        created = self.service.ensure_initialized(self.target, python=self.python)
+        self.assertTrue(created)
+        init_call = self.runner.stream_calls[-1]
+        self.assertEqual(init_call[init_call.index("-i") + 1], "base")
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
 
 
 class TestReset(DatabaseTestCase):
@@ -74,12 +97,12 @@ class TestReset(DatabaseTestCase):
                            stdout="base\ncrm\nsale\n")
         self.runner.expect("dropdb", stdout="", effect=self._drop_effect)
         self.runner.expect("createdb", stdout="")
-        self.runner.expect(str(self.python), stdout="")
         reinstalled = self.service.reset(self.target, python=self.python)
         self.assertEqual(reinstalled, ["crm", "sale"])  # base excluded
         flat = [" ".join(c) for c in self.runner.calls]
         self.assertTrue(any("dropdb" in c for c in flat))
-        install = self.runner.calls[-1]
+        # init and reinstall are streamed so a long reinstall shows progress
+        install = self.runner.stream_calls[-1]
         self.assertIn("-i", install)
         self.assertIn("crm,sale", install)
 
@@ -89,16 +112,25 @@ class TestReset(DatabaseTestCase):
                            stdout="base\n")
         self.runner.expect("dropdb", stdout="", effect=self._drop_effect)
         self.runner.expect("createdb", stdout="")
-        self.runner.expect(str(self.python), stdout="")
         reinstalled = self.service.reset(self.target, python=self.python)
         self.assertEqual(reinstalled, [])
-        init_calls = [c for c in self.runner.calls if c[0] == str(self.python)]
-        self.assertEqual(len(init_calls), 1)  # init only, no reinstall run
+        self.assertEqual(len(self.runner.stream_calls), 1)  # init, no reinstall
+
+    def test_reset_of_uninitialized_database_recreates_empty(self):
+        # `db reset` is the natural repair command and must work on a db
+        # bricked by an interrupted init instead of failing on the query
+        self.runner.expect("psql", stdout="")  # broad: terminate-backends etc.
+        self.db_exists(True)
+        self.base_installed(None)
+        self.runner.expect("dropdb", stdout="", effect=self._drop_effect)
+        self.runner.expect("createdb", stdout="")
+        reinstalled = self.service.reset(self.target, python=self.python)
+        self.assertEqual(reinstalled, [])
+        self.assertEqual(len(self.runner.stream_calls), 1)  # fresh init only
 
     def test_missing_database_recreated_empty(self):
         self.db_exists(False)
         self.runner.expect("createdb", stdout="")
-        self.runner.expect(str(self.python), stdout="")
         # second exists check inside ensure_initialized
         reinstalled = self.service.reset(self.target, python=self.python)
         self.assertEqual(reinstalled, [])

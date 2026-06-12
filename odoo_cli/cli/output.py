@@ -18,9 +18,6 @@ class Output:
     def warn(self, message: str) -> None:
         click.secho(f"warning: {message}", fg="yellow", err=True)
 
-    def error(self, message: str) -> None:
-        click.secho(f"error: {message}", fg="red", err=True)
-
     def hint(self, message: str) -> None:
         """A concise next action, shown after errors or completed commands."""
         click.echo(message, err=True)

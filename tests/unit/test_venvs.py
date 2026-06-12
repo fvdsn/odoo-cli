@@ -38,6 +38,16 @@ class TestVenvPath(VenvTestCase):
 
 
 class TestEnsure(VenvTestCase):
+    def test_path_replaced_by_a_file_is_healed(self):
+        # manual tampering: something non-directory sits at the venv path
+        self.available = {"uv": "/usr/bin/uv", "python3.13": "/usr/bin/python3.13"}
+        self.runner.expect("uv", stdout="")
+        wt = self.worktree()
+        (self.root / ".venvs" / "19.0").write_text("not a venv\n")
+        result = self.service().ensure(self.workspace, wt)
+        self.assertTrue(result.created)
+        self.assertTrue((self.root / ".venvs" / "19.0" / READY_MARKER).is_file())
+
     def test_creates_with_uv_when_available(self):
         self.available = {"uv": "/usr/bin/uv", "python3.13": "/usr/bin/python3.13"}
         self.runner.expect("uv", stdout="")

@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 from odoo_cli.core.errors import (
-    InvalidWorktreeName,
+    InvalidName,
     OdooCliError,
     RepositoryExists,
     RepositoryHasNoRemote,
@@ -40,14 +40,18 @@ BUILTIN_URLS = {
     "upgrade": "git@github.com:odoo/upgrade.git",
 }
 
-#: Worktree and repository names share these character rules.
-NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+#: Worktree, repository, and database names share these character rules.
+#: The first character may not be '-' or '.': these names end up as argv
+#: positionals (createdb, dropdb, psql) and must never look like options;
+#: this also excludes the path specials '.' and '..'.
+NAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
 
 def validate_name(name: str, *, kind: str = "name") -> None:
     if not name or not NAME_RE.match(name) or name in INTERNAL_DIRS:
-        raise InvalidWorktreeName(
-            f"invalid {kind} '{name}': use ASCII letters, digits, '_', '-', '.'"
+        raise InvalidName(
+            f"invalid {kind} '{name}': use ASCII letters, digits, '_', '-', "
+            "'.', starting with a letter, digit, or '_'"
         )
 
 
@@ -79,6 +83,16 @@ class RepositoryService:
     def exists(self, workspace: Workspace, name: str) -> bool:
         return (workspace.repositories_dir / f"{name}.git").is_dir()
 
+    def is_corrupt(self, workspace: Workspace, name: str) -> bool:
+        """An existing bare repo without a resolvable HEAD: the leftover of
+        an interrupted clone (or manual damage). Unusable for every purpose
+        and safe to replace — no worktree can be attached to it."""
+        if not self.exists(workspace, name):
+            return False
+        return not self.git.has_valid_head(
+            workspace.repositories_dir / f"{name}.git"
+        )
+
     def add(
         self, workspace: Workspace, name: str, url: str, *, full: bool = False
     ) -> RepositorySpec:
@@ -89,6 +103,9 @@ class RepositoryService:
                 f"'{name}' is a built-in repository",
                 hint=f"use `odoo repo enable {name}`",
             )
+        if self.is_corrupt(workspace, name):
+            # leftover of an interrupted clone: a re-run must repair it
+            return self.replace_with_clone(workspace, name, url, full=full)
         if self.exists(workspace, name):
             raise RepositoryExists(f"repository '{name}' already exists")
         return self._clone(workspace, name, url, full=full)
@@ -97,8 +114,13 @@ class RepositoryService:
         self, workspace: Workspace, name: str, url: str | None = None, *, full: bool = False
     ) -> RepositorySpec:
         """Clone a repo, or fetch it when already present (`repo enable`,
-        `odoo init` re-runs)."""
+        `odoo init` re-runs). A corrupt leftover of an interrupted clone is
+        replaced, so a re-run always converges to a usable repository."""
         effective_full = full or not self.git.supports_reliable_blobless_clone()
+        if self.is_corrupt(workspace, name):
+            return self.replace_with_clone(
+                workspace, name, url, full=effective_full
+            )
         if self.exists(workspace, name):
             spec = self.get(workspace, name)
             if effective_full and self.git.is_partial_clone(spec.path):
@@ -120,7 +142,12 @@ class RepositoryService:
                 raise RepositoryHasNoRemote(
                     f"repository '{name}' has no origin remote; cannot fetch"
                 )
-            self.git.fetch(spec.path)
+            # branches checked out in worktrees belong to those worktrees
+            # (git would refuse to update them and abort the whole fetch)
+            self.git.fetch(
+                spec.path,
+                exclude_branches=self.git.worktree_branches(spec.path),
+            )
             return spec
         resolved_url = url or BUILTIN_URLS.get(name)
         if resolved_url is None:
@@ -142,31 +169,48 @@ class RepositoryService:
         *,
         full: bool,
     ) -> RepositorySpec:
-        """Replace a bare repository only when no checkout worktrees depend on it."""
+        """Replace a bare repository only when no checkout worktrees depend on it.
+
+        Interruption-safe ordering: clone into a temp dir first, swap the old
+        repo aside and the new one in with two renames, and delete the old
+        copy only at the end. The slow deletions never sit between the user
+        and a usable repository."""
         path = workspace.repositories_dir / f"{name}.git"
         resolved_url = url
         if resolved_url is None and path.is_dir():
-            resolved_url = self.git.remote_url(path)
+            resolved_url = self.git.remote_url(path)  # None for a broken repo
         resolved_url = resolved_url or BUILTIN_URLS.get(name)
         if resolved_url is None:
             raise RepositoryHasNoRemote(
-                f"repository '{name}' has no origin remote; cannot reclone"
+                f"repository '{name}' has no origin remote; cannot reclone",
+                hint=f"remove {path} and clone it again with an explicit URL",
             )
-        if path.is_dir() and self._has_checkout_worktrees(path):
+        usable = path.is_dir() and self.git.has_valid_head(path)
+        if usable and self._has_checkout_worktrees(path):
             raise OdooCliError(
                 f"cannot replace repository '{name}' while worktrees exist",
                 hint="remove those worktrees first, or clone a fresh workspace",
             )
 
         workspace.repositories_dir.mkdir(parents=True, exist_ok=True)
+        old = workspace.repositories_dir / f".{name}.git.old"
+        if old.exists():
+            shutil.rmtree(old)  # leftover of an interrupted replace
         with tempfile.TemporaryDirectory(
             prefix=f".{name}-reclone-", dir=workspace.repositories_dir
         ) as tmp:
             replacement = Path(tmp) / f"{name}.git"
             self.git.clone_bare(resolved_url, replacement, blobless=not full)
             if path.exists():
-                shutil.rmtree(path)
-            replacement.rename(path)
+                path.rename(old)
+            try:
+                replacement.rename(path)
+            except BaseException:
+                if old.exists() and not path.exists():
+                    old.rename(path)  # restore the original
+                raise
+        if old.exists():
+            shutil.rmtree(old)
         return RepositorySpec(name=name, path=path, url=resolved_url)
 
     def _has_checkout_worktrees(self, repo_path: Path) -> bool:
@@ -189,10 +233,17 @@ class RepositoryService:
         return self.git.branch_exists(repo.path, version)
 
     def require_version(self, repo: RepositorySpec, version: str) -> None:
-        if not self.has_version(repo, version):
+        if self.has_version(repo, version):
+            return
+        if not self.git.has_valid_head(repo.path):
             raise VersionNotFound(
-                f"repository '{repo.name}' has no branch '{version}'"
+                f"repository '{repo.name}' looks incomplete (interrupted "
+                "clone?)",
+                hint="re-run `odoo init` to repair it",
             )
+        raise VersionNotFound(
+            f"repository '{repo.name}' has no branch '{version}'"
+        )
 
     def latest_stable_version(self, repo: RepositorySpec) -> str:
         """Highest `N.0` branch — `odoo init`'s default version."""

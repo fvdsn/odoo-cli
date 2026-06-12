@@ -38,10 +38,6 @@ class Workspace:
     def run_dir(self) -> Path:
         return self.root / ".run"
 
-    @property
-    def marker(self) -> Path:
-        return self.repositories_dir / "odoo.git"
-
 
 @dataclass
 class RepositorySpec:

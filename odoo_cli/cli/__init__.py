@@ -1,1 +1,1 @@
-"""Click frontend: command wiring, terminal rendering, prompts."""
+"""Click frontend: command wiring and terminal rendering."""

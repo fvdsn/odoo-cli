@@ -71,16 +71,27 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
     bootstrap = Workspace(root=root, config=OdooConf.load(conf_path))
     clone_mode = services.repositories.clone_mode(full)
     for name in DEFAULT_REPOS:
-        action = "Fetching" if services.repositories.exists(bootstrap, name) else "Cloning"
+        if services.repositories.is_corrupt(bootstrap, name):
+            action = "Recloning (incomplete)"
+        elif services.repositories.exists(bootstrap, name):
+            action = "Fetching"
+        else:
+            action = "Cloning"
         out.echo(f"{action} {name} ({clone_mode})...")
-        services.repositories.clone_or_fetch(bootstrap, name, full=full)
+        try:
+            services.repositories.clone_or_fetch(bootstrap, name, full=full)
+        except ProcessError:
+            if action != "Fetching":
+                raise
+            # the repo is already usable; a re-run must not require network
+            out.warn(f"could not fetch {name} (offline?); using the local copy")
 
     workspace = services.workspace.resolve()
     odoo_repo = services.repositories.get(workspace, "odoo")
     version = version or services.repositories.latest_stable_version(odoo_repo)
 
     def create_initial_worktree() -> Worktree:
-        out.echo(f"Creating worktree {version}...")
+        out.echo(f"Preparing worktree {version}...")
         try:
             result = services.worktrees.create_full(workspace, version, version)
         except ProcessError as exc:
@@ -98,31 +109,20 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
                 full=True,
             )
             result = services.worktrees.create_full(workspace, version, version)
+        if result.existed:
+            out.echo(
+                f"Worktree {version} already exists; added only what was missing"
+            )
+        for warning in result.warnings:
+            out.warn(warning)
         for skipped in result.skipped:
             out.warn(f"skipped {skipped.name}: {skipped.reason}")
         return result.worktree
 
-    worktree_path = workspace.root / version
-    if worktree_path.exists():
-        worktree = Worktree(name=version, path=worktree_path)
-        if services.worktrees.is_valid(worktree):
-            out.echo(f"Worktree {version} already exists, leaving it untouched")
-            for repo_name in DEFAULT_REPOS:
-                if not (worktree.path / repo_name).exists():
-                    out.echo(f"Adding missing {repo_name} checkout...")
-                    result = services.worktrees.add_repository(
-                        workspace, worktree, repo_name
-                    )
-                    if not result.added:
-                        out.warn(f"skipped {repo_name}: {result.reason}")
-        elif services.worktrees.can_repair_incomplete_full(workspace, worktree):
-            out.warn(f"Worktree {version} is incomplete; recreating it")
-            services.worktrees.remove_incomplete_full(workspace, worktree)
-            worktree = create_initial_worktree()
-        else:
-            services.worktrees.remove_incomplete_full(workspace, worktree)
-    else:
-        worktree = create_initial_worktree()
+    # create_full converges on re-runs: it completes a valid worktree,
+    # repairs the leftover of an interrupted run, and refuses (with a
+    # move-it-aside hint) anything it cannot prove to be its own
+    worktree = create_initial_worktree()
 
     out.echo("Setting up the virtual environment...")
     services.venvs.ensure(workspace, worktree)
