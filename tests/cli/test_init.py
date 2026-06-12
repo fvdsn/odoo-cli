@@ -22,6 +22,7 @@ class InitCommandTestCase(unittest.TestCase):
         self.runner = FakeProcessRunner()
         self.tools = {
             "psql": "/usr/bin/psql",
+            "runuser": "/usr/sbin/runuser",
             "uv": "/usr/bin/uv",
             "python3.13": "/usr/bin/python3.13",
         }
@@ -29,7 +30,13 @@ class InitCommandTestCase(unittest.TestCase):
 
     def context(self) -> CliContext:
         services = Services(process=self.runner, env=self.env)
-        services.postgres = PostgresService(self.runner, which=self.tools.get)
+        services.postgres = PostgresService(
+            self.runner,
+            which=self.tools.get,
+            platform="linux",
+            geteuid=lambda: 0,
+            current_user=lambda: "dev",
+        )
         services.venvs = VenvService(self.runner, which=self.tools.get)
         return CliContext(services=services)
 
@@ -108,10 +115,63 @@ class TestInit(InitCommandTestCase):
         conf = OdooConf.load(self.home / ".config" / "odoo" / "odoo.conf")
         self.assertEqual(conf.get("without_demo"), "True")
 
-    def test_missing_postgres_fails_before_cloning(self):
+    def test_missing_postgres_installs_before_cloning(self):
         del self.tools["psql"]
+        self.tools["apt-get"] = "/usr/bin/apt-get"
+        self.tools["service"] = "/usr/sbin/service"
+
+        def install_effect(call):
+            self.tools["psql"] = "/usr/bin/psql"
+
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"
+        )
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get",
+            "install", "-y", "postgresql", effect=install_effect
+        )
+        self.runner.expect_stream("service", "postgresql", "start")
+        self.runner.expect("runuser", "-u", "postgres", "--", "createuser")
+        self.script_happy_path()
+
         result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("installing with apt-get", result.output)
+        self.assertEqual(
+            self.runner.stream_calls[0],
+            ("env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"),
+        )
+        self.assertEqual(
+            self.runner.stream_calls[1],
+            (
+                "env", "DEBIAN_FRONTEND=noninteractive", "apt-get",
+                "install", "-y", "postgresql",
+            ),
+        )
+        self.assertTrue((self.root / ".repositories" / "odoo.git").is_dir())
+
+    def test_missing_postgres_without_supported_manager_fails_before_cloning(self):
+        del self.tools["psql"]
+
+        result = self.invoke("init")
+
         self.assertEqual(result.exit_code, 1)
+        self.assertEqual(self.runner.calls, [])  # nothing cloned
+        self.assertEqual(self.runner.stream_calls, [])  # nothing installed
+
+    def test_postgres_install_failure_fails_before_cloning(self):
+        del self.tools["psql"]
+        self.tools["apt-get"] = "/usr/bin/apt-get"
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update",
+            returncode=1,
+        )
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("could not install PostgreSQL", result.exception.message)
         self.assertEqual(self.runner.calls, [])  # nothing cloned
 
     def test_existing_conf_is_never_modified(self):

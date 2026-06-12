@@ -494,9 +494,14 @@ v2 server lifecycle.
    HEAD) are replaced, an incomplete worktree is repaired, a valid one is
    completed; fetch failures on already-present repos only warn, so offline
    re-runs still work
- - postgres: check if installed, try to connect with default user
-   - if not installed: print install instructions for the platform and exit
-   - NOTE: consider auto-installing postgres (apt/brew) if Anthony requires it
+ - postgres: check if installed, installing it first when `psql` is missing
+   - Debian/Ubuntu/WSL: use `apt-get update` and `apt-get install -y postgresql`
+   - macOS: use `brew install postgresql`
+   - after installation, best-effort start the service (`systemctl`/`service`
+     on Linux, `brew services` on macOS); warn if the service cannot be started
+     automatically
+   - if no supported package manager is found, print install instructions for
+     the platform and exit
    - if installed but connection fails: tell user to fix the `db_*` keys with
      `odoo config set`
 

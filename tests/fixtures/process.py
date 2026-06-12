@@ -20,6 +20,9 @@ class FakeProcessRunner:
         self._scripts: list[
             tuple[tuple[str, ...], ProcessResult, Callable | None]
         ] = []
+        self._stream_scripts: list[
+            tuple[tuple[str, ...], int, Callable | None]
+        ] = []
         self.stream_returncode = 0
 
     def expect(
@@ -40,6 +43,14 @@ class FakeProcessRunner:
             argv=prefix, returncode=returncode, stdout=stdout, stderr=stderr
         )
         self._scripts.insert(0, (prefix, result, effect))
+
+    def expect_stream(
+        self,
+        *prefix: str,
+        returncode: int = 0,
+        effect: Callable[[tuple[str, ...]], None] | None = None,
+    ) -> None:
+        self._stream_scripts.insert(0, (prefix, returncode, effect))
 
     def run(
         self,
@@ -74,5 +85,11 @@ class FakeProcessRunner:
         cwd: Path | None = None,
         extra_env: dict[str, str] | None = None,
     ) -> int:
-        self.stream_calls.append(tuple(str(a) for a in argv))
+        call = tuple(str(a) for a in argv)
+        self.stream_calls.append(call)
+        for prefix, returncode, effect in self._stream_scripts:
+            if call[: len(prefix)] == prefix:
+                if effect is not None:
+                    effect(call)
+                return returncode
         return self.stream_returncode

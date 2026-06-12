@@ -10,7 +10,6 @@ from pathlib import Path
 
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
-from odoo_cli.core.errors import PostgresError
 from odoo_cli.core.models import Workspace, Worktree
 from odoo_cli.core.odoo_conf import OdooConf
 from odoo_cli.core.repositories import DEFAULT_REPOS
@@ -39,13 +38,12 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
 
     # fail fast before any slow clone
     if not services.postgres.is_installed():
-        raise PostgresError(
-            "PostgreSQL is not installed (psql not found)",
-            hint=(
-                "install it first: `apt install postgresql` (Debian/Ubuntu) "
-                "or `brew install postgresql` (macOS), then re-run `odoo init`"
-            ),
-        )
+        plan = services.postgres.install_plan()
+        out.echo(f"PostgreSQL is not installed; installing with {plan.manager}...")
+        result = services.postgres.install()
+        out.echo(f"Installed PostgreSQL with {result.manager}")
+        for warning in result.warnings:
+            out.warn(warning)
 
     root = services.workspace.create_skeleton()
 

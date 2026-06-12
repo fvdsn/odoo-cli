@@ -61,6 +61,8 @@ database defaults to the worktree name.
 python3 -m unittest discover           # unit + cli + integration (fast, no network)
 ODOO_CLI_E2E=1 ODOO_CLI_E2E_ODOO_REPO=~/src/odoo \
     python3 -m unittest discover tests/e2e -v  # real-Odoo flows (slow, opt-in)
+ODOO_CLI_DOCKER_E2E=1 \
+    python3 -m unittest tests.integration.test_postgres_install_environments -v
 ```
 
 Architecture, layering rules, and the testing strategy are documented in

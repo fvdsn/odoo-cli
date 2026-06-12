@@ -67,3 +67,209 @@ class TestDatabases(PostgresTestCase):
         self.service.db_exists(self.conf, "bad'name")
         query = self.runner.calls[0][3]
         self.assertIn("'bad''name'", query)
+
+
+class TestInstall(PostgresTestCase):
+    def make_service(self, tools, *, platform="linux", euid=0):
+        return PostgresService(
+            self.runner,
+            which=tools.get,
+            platform=platform,
+            geteuid=lambda: euid,
+            current_user=lambda: "dev",
+        )
+
+    def test_linux_apt_install_as_root(self):
+        tools = {"apt-get": "/usr/bin/apt-get", "psql": None}
+
+        def install_effect(call):
+            tools["psql"] = "/usr/bin/psql"
+
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"
+        )
+        self.runner.expect_stream(
+            "env",
+            "DEBIAN_FRONTEND=noninteractive",
+            "apt-get",
+            "install",
+            "-y",
+            "postgresql",
+            effect=install_effect,
+        )
+        result = self.make_service(tools).install()
+
+        self.assertEqual(result.manager, "apt-get")
+        self.assertEqual(
+            self.runner.stream_calls,
+            [
+                ("env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"),
+                (
+                    "env",
+                    "DEBIAN_FRONTEND=noninteractive",
+                    "apt-get",
+                    "install",
+                    "-y",
+                    "postgresql",
+                ),
+            ],
+        )
+        self.assertIn("service manager", result.warnings[0])
+
+    def test_linux_apt_uses_sudo_when_not_root(self):
+        tools = {
+            "apt-get": "/usr/bin/apt-get",
+            "sudo": "/usr/bin/sudo",
+            "service": "/usr/sbin/service",
+            "psql": None,
+        }
+
+        def install_effect(call):
+            tools["psql"] = "/usr/bin/psql"
+
+        self.runner.expect_stream(
+            "sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"
+        )
+        self.runner.expect_stream(
+            "sudo",
+            "env",
+            "DEBIAN_FRONTEND=noninteractive",
+            "apt-get",
+            "install",
+            "-y",
+            "postgresql",
+            effect=install_effect,
+        )
+        self.runner.expect_stream("sudo", "service", "postgresql", "start")
+        self.runner.expect("sudo", "-u", "postgres", "createuser")
+
+        result = self.make_service(tools, euid=1000).install()
+
+        self.assertEqual(result.warnings, ())
+        self.assertEqual(
+            self.runner.stream_calls[0],
+            ("sudo", "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"),
+        )
+
+    def test_macos_homebrew_install(self):
+        tools = {"brew": "/opt/homebrew/bin/brew", "psql": None}
+
+        def install_effect(call):
+            tools["psql"] = "/opt/homebrew/bin/psql"
+
+        self.runner.expect_stream("brew", "install", "postgresql", effect=install_effect)
+        self.runner.expect_stream("brew", "services", "start", "postgresql")
+
+        result = self.make_service(tools, platform="darwin").install()
+
+        self.assertEqual(result.manager, "Homebrew")
+        self.assertEqual(result.warnings, ())
+        self.assertEqual(
+            self.runner.stream_calls,
+            [
+                ("brew", "install", "postgresql"),
+                ("brew", "services", "start", "postgresql"),
+            ],
+        )
+
+    def test_start_falls_back_from_systemctl_to_service(self):
+        tools = {
+            "apt-get": "/usr/bin/apt-get",
+            "runuser": "/usr/sbin/runuser",
+            "systemctl": "/usr/bin/systemctl",
+            "service": "/usr/sbin/service",
+            "psql": None,
+        }
+
+        def install_effect(call):
+            tools["psql"] = "/usr/bin/psql"
+
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"
+        )
+        self.runner.expect_stream(
+            "env",
+            "DEBIAN_FRONTEND=noninteractive",
+            "apt-get",
+            "install",
+            "-y",
+            "postgresql",
+            effect=install_effect,
+        )
+        self.runner.expect_stream("systemctl", "start", "postgresql", returncode=1)
+        self.runner.expect_stream("service", "postgresql", "start")
+        self.runner.expect("runuser", "-u", "postgres", "--", "createuser")
+
+        result = self.make_service(tools).install()
+
+        self.assertEqual(result.warnings, ())
+        self.assertEqual(
+            self.runner.stream_calls[-2:],
+            [
+                ("systemctl", "start", "postgresql"),
+                ("service", "postgresql", "start"),
+            ],
+        )
+
+    def test_existing_current_user_role_is_ok(self):
+        tools = {
+            "apt-get": "/usr/bin/apt-get",
+            "runuser": "/usr/sbin/runuser",
+            "service": "/usr/sbin/service",
+            "psql": None,
+        }
+
+        def install_effect(call):
+            tools["psql"] = "/usr/bin/psql"
+
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"
+        )
+        self.runner.expect_stream(
+            "env",
+            "DEBIAN_FRONTEND=noninteractive",
+            "apt-get",
+            "install",
+            "-y",
+            "postgresql",
+            effect=install_effect,
+        )
+        self.runner.expect_stream("service", "postgresql", "start")
+        self.runner.expect(
+            "runuser",
+            "-u",
+            "postgres",
+            "--",
+            "createuser",
+            returncode=1,
+            stderr=(
+                "createuser: error: creation of new role failed: "
+                'ERROR:  role "dev" already exists\n'
+            ),
+        )
+
+        result = self.make_service(tools).install()
+
+        self.assertEqual(result.manager, "apt-get")
+        self.assertEqual(result.warnings, ())
+
+    def test_no_supported_package_manager_is_typed(self):
+        with self.assertRaises(PostgresError) as cm:
+            self.make_service({}).install_plan()
+        self.assertIn("apt-get was not found", cm.exception.message)
+
+    def test_install_failure_is_typed(self):
+        tools = {"apt-get": "/usr/bin/apt-get"}
+        self.runner.expect_stream(
+            "env",
+            "DEBIAN_FRONTEND=noninteractive",
+            "apt-get",
+            "update",
+            returncode=1,
+        )
+
+        with self.assertRaises(PostgresError) as cm:
+            self.make_service(tools).install()
+
+        self.assertIn("could not install PostgreSQL", cm.exception.message)
+        self.assertIn("apt-get update", cm.exception.hint)
