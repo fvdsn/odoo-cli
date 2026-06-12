@@ -25,6 +25,11 @@ SECRET_KEYS = frozenset({"db_password", "admin_passwd"})
 
 REDACTED = "********"
 
+
+def is_set(value: str | None) -> bool:
+    """Odoo's convention: the string "False" (or nothing) means unset."""
+    return bool(value) and value != "False"
+
 #: Defaults written by `odoo init` (usecase.md §1) and the keys init reports
 #: as missing when the file already exists.
 DEFAULTS: dict[str, str] = {
@@ -82,8 +87,8 @@ class OdooConf:
         values = dict(self._parser.items(SECTION))
         if not reveal:
             for key, value in values.items():
-                # "False" and "" mean unset (see core/postgres.py), not a secret
-                if key in SECRET_KEYS and value and value != "False":
+                # an unset secret is not a secret
+                if key in SECRET_KEYS and is_set(value):
                     values[key] = REDACTED
         return values
 

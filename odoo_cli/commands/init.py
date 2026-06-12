@@ -9,9 +9,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from odoo_cli.cli._click import click
-from odoo_cli.cli.context import CliContext
+from odoo_cli.cli.context import CliContext, Services
+from odoo_cli.cli.output import Output
 from odoo_cli.core.models import Workspace, Worktree
-from odoo_cli.core.odoo_conf import OdooConf
+from odoo_cli.core.odoo_conf import OdooConf, is_set
 from odoo_cli.core.repositories import DEFAULT_REPOS
 from odoo_cli.util.process import ProcessError
 
@@ -126,13 +127,37 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
     services.venvs.ensure(workspace, worktree)
 
     if not services.postgres.check_connection(workspace.config):
-        out.warn(
-            "could not connect to PostgreSQL; fix the db_* keys with "
-            "`odoo config set db_user ...` (see `odoo config list`)"
-        )
+        _configure_detected_port(services, out, workspace.config)
 
     out.success(f"Workspace ready at {workspace.root}")
     out.echo(f"Next: cd {worktree.path} && odoo start")
+
+
+def _configure_detected_port(services: Services, out: Output, conf: OdooConf) -> None:
+    """A local server on a non-standard port still advertises itself through
+    its socket files; with exactly one match, adopt its port instead of
+    leaving the workspace broken."""
+    fallback = (
+        "could not connect to PostgreSQL; fix the db_* keys with "
+        "`odoo config set db_user ...` (see `odoo config list`)"
+    )
+    if is_set(conf.get("db_host")) or is_set(conf.get("db_port")):
+        # the user picked a target; second-guessing it would hide the typo
+        out.warn(fallback)
+        return
+    ports = services.postgres.detect_local_ports(conf)
+    if len(ports) == 1:
+        conf.set("db_port", str(ports[0]))
+        conf.save()
+        out.echo(f"PostgreSQL answers on port {ports[0]}; saved db_port to {conf.path}")
+    elif ports:
+        out.warn(
+            "could not connect to PostgreSQL on the default port; servers "
+            f"answer on ports {', '.join(str(p) for p in ports)}: choose one "
+            "with `odoo config set db_port ...`"
+        )
+    else:
+        out.warn(fallback)
 
 
 def _is_promisor_failure(exc: ProcessError) -> bool:

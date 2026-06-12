@@ -14,9 +14,10 @@ import shutil
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 from odoo_cli.core.errors import PostgresError
-from odoo_cli.core.odoo_conf import OdooConf
+from odoo_cli.core.odoo_conf import OdooConf, is_set
 from odoo_cli.util.process import ProcessError, ProcessRunner
 
 _ENV_KEYS = {
@@ -25,6 +26,10 @@ _ENV_KEYS = {
     "db_user": "PGUSER",
     "db_password": "PGPASSWORD",
 }
+
+#: Where a local server creates its `.s.PGSQL.<port>` socket file:
+#: Debian/Ubuntu use /var/run/postgresql, Homebrew/macOS default to /tmp.
+_SOCKET_DIRS = (Path("/var/run/postgresql"), Path("/tmp"))
 
 
 @dataclass(frozen=True)
@@ -54,10 +59,12 @@ class PostgresService:
         platform: str | None = None,
         geteuid: Callable[[], int | None] | None = None,
         current_user: Callable[[], str] | None = None,
+        socket_dirs: tuple[Path, ...] | None = None,
     ):
         self.runner = runner
         self.which = which
         self.platform = sys.platform if platform is None else platform
+        self.socket_dirs = _SOCKET_DIRS if socket_dirs is None else socket_dirs
         self.geteuid = (
             getattr(os, "geteuid", lambda: None)
             if geteuid is None
@@ -69,7 +76,7 @@ class PostgresService:
         env = {}
         for key, var in _ENV_KEYS.items():
             value = conf.get(key)
-            if value and value != "False":
+            if is_set(value):
                 env[var] = value
         return env
 
@@ -222,6 +229,36 @@ class PostgresService:
     def check_connection(self, conf: OdooConf) -> bool:
         result = self.runner.run(
             ["psql", "--no-psqlrc", "-tAc", "SELECT 1", "postgres"],
+            extra_env=self.env(conf),
+            check=False,
+        )
+        return result.returncode == 0
+
+    def detect_local_ports(self, conf: OdooConf) -> list[int]:
+        """Ports of local servers that answer `SELECT 1`.
+
+        A running server advertises its port as the suffix of its
+        `.s.PGSQL.<port>` socket file; `pg_lsclusters` (Debian/Ubuntu)
+        additionally covers clusters with a non-standard socket directory.
+        """
+        candidates: set[int] = set()
+        for directory in self.socket_dirs:
+            for socket in directory.glob(".s.PGSQL.*"):
+                port = socket.name.rsplit(".", 1)[-1]
+                if port.isdigit():
+                    candidates.add(int(port))
+        if self.which("pg_lsclusters"):
+            result = self.runner.run(["pg_lsclusters", "--no-header"], check=False)
+            if result.returncode == 0:
+                for line in result.stdout.splitlines():
+                    parts = line.split()  # Ver Cluster Port Status ...
+                    if len(parts) >= 4 and parts[2].isdigit() and "online" in parts[3]:
+                        candidates.add(int(parts[2]))
+        return [port for port in sorted(candidates) if self._answers(conf, port)]
+
+    def _answers(self, conf: OdooConf, port: int) -> bool:
+        result = self.runner.run(
+            ["psql", "--no-psqlrc", "-p", str(port), "-tAc", "SELECT 1", "postgres"],
             extra_env=self.env(conf),
             check=False,
         )

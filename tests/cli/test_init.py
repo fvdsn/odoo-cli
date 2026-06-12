@@ -26,6 +26,7 @@ class InitCommandTestCase(unittest.TestCase):
             "uv": "/usr/bin/uv",
             "python3.13": "/usr/bin/python3.13",
         }
+        self.sockets = self.home / "sockets"
         self.cli_runner = testing.CliRunner()
 
     def context(self) -> CliContext:
@@ -36,6 +37,7 @@ class InitCommandTestCase(unittest.TestCase):
             platform="linux",
             geteuid=lambda: 0,
             current_user=lambda: "dev",
+            socket_dirs=(self.sockets,),
         )
         services.venvs = VenvService(self.runner, which=self.tools.get)
         return CliContext(services=services)
@@ -313,3 +315,50 @@ class TestInit(InitCommandTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("could not connect to PostgreSQL", result.output)
         self.assertIn("Workspace ready", result.output)
+
+    def test_connection_failure_adopts_detected_port(self):
+        self.script_happy_path()
+        self.sockets.mkdir(parents=True)
+        (self.sockets / ".s.PGSQL.5433").touch()
+        self.runner.expect("psql", returncode=2)
+        self.runner.expect("psql", "--no-psqlrc", "-p", "5433", stdout="1\n")
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("PostgreSQL answers on port 5433", result.output)
+        self.assertNotIn("could not connect", result.output)
+        conf = OdooConf.load(self.home / ".config" / "odoo" / "odoo.conf")
+        self.assertEqual(conf.get("db_port"), "5433")
+
+    def test_connection_failure_multiple_ports_warns(self):
+        self.script_happy_path()
+        self.sockets.mkdir(parents=True)
+        (self.sockets / ".s.PGSQL.5433").touch()
+        (self.sockets / ".s.PGSQL.5434").touch()
+        self.runner.expect("psql", returncode=2)
+        self.runner.expect("psql", "--no-psqlrc", "-p", "5433", stdout="1\n")
+        self.runner.expect("psql", "--no-psqlrc", "-p", "5434", stdout="1\n")
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("ports 5433, 5434", result.output)
+        conf = OdooConf.load(self.home / ".config" / "odoo" / "odoo.conf")
+        self.assertEqual(conf.get("db_port"), "False")
+
+    def test_connection_failure_with_explicit_target_does_not_probe(self):
+        conf_path = self.home / ".config" / "odoo" / "odoo.conf"
+        conf_path.parent.mkdir(parents=True)
+        conf_path.write_text("[options]\ndb_host = db.example.com\n")
+        self.script_happy_path()
+        self.sockets.mkdir(parents=True)
+        (self.sockets / ".s.PGSQL.5433").touch()
+        self.runner.expect("psql", returncode=2)
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("could not connect to PostgreSQL", result.output)
+        probes = [c for c in self.runner.calls if c[0] == "psql" and "-p" in c]
+        self.assertEqual(probes, [])

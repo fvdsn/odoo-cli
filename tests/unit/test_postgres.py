@@ -69,6 +69,53 @@ class TestDatabases(PostgresTestCase):
         self.assertIn("'bad''name'", query)
 
 
+class TestDetectLocalPorts(PostgresTestCase):
+    def make_service(self, tools=None):
+        self.sockets = Path(self._tmp.name) / "sockets"
+        self.sockets.mkdir(exist_ok=True)
+        return PostgresService(
+            self.runner,
+            which=(tools or {}).get,
+            socket_dirs=(self.sockets,),
+        )
+
+    def test_ports_from_socket_files(self):
+        service = self.make_service()
+        (self.sockets / ".s.PGSQL.5433").touch()
+        (self.sockets / ".s.PGSQL.5433.lock").touch()  # suffix not a port
+        self.runner.expect("psql", "--no-psqlrc", "-p", "5433", stdout="1\n")
+        self.assertEqual(service.detect_local_ports(self.conf), [5433])
+
+    def test_silent_ports_are_filtered(self):
+        service = self.make_service()
+        (self.sockets / ".s.PGSQL.5433").touch()
+        (self.sockets / ".s.PGSQL.5434").touch()
+        self.runner.expect("psql", returncode=2)
+        self.runner.expect("psql", "--no-psqlrc", "-p", "5434", stdout="1\n")
+        self.assertEqual(service.detect_local_ports(self.conf), [5434])
+
+    def test_ports_from_pg_lsclusters(self):
+        service = self.make_service(tools={"pg_lsclusters": "/usr/bin/pg_lsclusters"})
+        self.runner.expect(
+            "pg_lsclusters",
+            stdout=(
+                "17 main 5434 online postgres /var/lib/postgresql/17/main log\n"
+                "16 old 5435 down postgres /var/lib/postgresql/16/old log\n"
+            ),
+        )
+        self.runner.expect("psql", "--no-psqlrc", "-p", "5434", stdout="1\n")
+        # the down cluster is never probed: an unexpected psql would fail here
+        self.assertEqual(service.detect_local_ports(self.conf), [5434])
+
+    def test_missing_socket_dir_yields_nothing(self):
+        service = PostgresService(
+            self.runner,
+            which=lambda n: None,
+            socket_dirs=(Path(self._tmp.name) / "nope",),
+        )
+        self.assertEqual(service.detect_local_ports(self.conf), [])
+
+
 class TestInstall(PostgresTestCase):
     def make_service(self, tools, *, platform="linux", euid=0):
         return PostgresService(

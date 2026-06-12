@@ -504,6 +504,10 @@ v2 server lifecycle.
      the platform and exit
    - if installed but connection fails: tell user to fix the `db_*` keys with
      `odoo config set`
+   - before warning, when `db_host`/`db_port` are unset, look for local servers
+     on non-standard ports (`.s.PGSQL.<port>` socket files, `pg_lsclusters`);
+     if exactly one answers, save its port as `db_port`; if several answer,
+     list them in the warning
 
 ### `odoo config` [v1]
 Non-interactive workspace configuration: a thin, scriptable front over the shared
