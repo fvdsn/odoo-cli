@@ -145,7 +145,7 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
         (self.repos() / "customer-a-addons.git").mkdir()
         result = self.invoke(
             "worktree", "create", "customer-a", "19.0",
-            "--linked-from", "19.0", "--addon", "customer-a-addons",
+            "--linked", "--addon", "customer-a-addons",
         )
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("linked odoo from 19.0", result.output)
@@ -154,11 +154,39 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
             os.readlink(self.root / "customer-a" / "odoo"), "../19.0/odoo"
         )
 
-    def test_addon_requires_linked_from(self):
+    def test_addon_requires_linked(self):
         result = self.invoke(
             "worktree", "create", "x", "19.0", "--addon", "a"
         )
         self.assertEqual(result.exit_code, 2)
+
+    def test_linked_requires_a_source(self):
+        result = self.invoke("worktree", "create", "customer-a", "--linked")
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("NAME SOURCE --linked", result.output)
+
+    def test_linked_source_must_not_be_linked(self):
+        make_worktree(self.root, "19.0", version="19.0")
+        make_worktree(self.root, "customer-a", linked_from="19.0")
+        result = self.invoke(
+            "worktree", "create", "customer-b", "customer-a", "--linked"
+        )
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("link from '19.0' instead", result.exception.hint)
+
+    def test_worktree_source_without_linked_hints_at_linked(self):
+        make_worktree(self.root, "fix-pos", version="19.0")
+        repo = str(self.repos() / "odoo.git")
+        self.runner.expect("git", "-C", repo, "rev-parse", returncode=1)
+        # the repo itself is healthy; only the branch lookup fails
+        self.runner.expect(
+            "git", "-C", repo, "rev-parse", "--verify", "--quiet", "HEAD",
+            stdout="abc123\n",
+        )
+        result = self.invoke("worktree", "create", "hotfix", "fix-pos")
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("--linked", result.exception.hint)
+        self.assertIn("not supported yet", result.exception.hint)
 
 
 class TestVenvCommand(RepoWorktreeTestCase):

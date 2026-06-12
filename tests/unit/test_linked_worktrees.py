@@ -5,7 +5,6 @@ from pathlib import Path
 
 from odoo_cli.core.errors import (
     RepositoryNotFound,
-    VersionNotFound,
     WorktreeNotFound,
 )
 from odoo_cli.core.models import Workspace, Worktree
@@ -48,7 +47,7 @@ class TestCreateLinked(LinkedWorktreeTestCase):
             "--verify", "--quiet", "refs/heads/customer-a", returncode=1,
         )
         result = self.service.create_linked(
-            self.workspace, "customer-a", "19.0", "19.0", ["customer-a-addons"]
+            self.workspace, "customer-a", "19.0", ["customer-a-addons"]
         )
         path = self.root / "customer-a"
         self.assertEqual(result.linked, ["odoo", "documentation", "enterprise"])
@@ -74,30 +73,36 @@ class TestCreateLinked(LinkedWorktreeTestCase):
         self.runner.expect("git", "-C", repo, "rev-parse", returncode=1)
         self.runner.expect("git", "-C", repo, "symbolic-ref", stdout="main\n")
         result = self.service.create_linked(
-            self.workspace, "customer-a", "19.0", "19.0", ["customer-a-addons"]
+            self.workspace, "customer-a", "19.0", ["customer-a-addons"]
         )
         self.assertEqual(len(result.warnings), 1)
         self.assertIn("default", result.warnings[0])
         add = next(c for c in self.runner.calls if "worktree" in c and "add" in c)
         self.assertEqual(add[-1], "main")
 
-    def test_version_must_match_source(self):
-        with self.assertRaises(VersionNotFound) as cm:
+    def test_linked_source_is_rejected(self):
+        # symlink chains break silently when the middle worktree is removed
+        from odoo_cli.core.errors import OdooCliError
+
+        make_worktree(self.root, "customer-a", linked_from="19.0")
+        with self.assertRaises(OdooCliError) as cm:
             self.service.create_linked(
-                self.workspace, "customer-a", "18.0", "19.0", []
+                self.workspace, "customer-b", "customer-a", []
             )
-        self.assertIn("19.0", cm.exception.message)
+        self.assertIn("linked worktree", cm.exception.message)
+        self.assertIn("19.0", cm.exception.hint)
+        self.assertFalse((self.root / "customer-b").exists())
 
     def test_source_must_exist(self):
         with self.assertRaises(WorktreeNotFound):
             self.service.create_linked(
-                self.workspace, "customer-a", "19.0", "nope", []
+                self.workspace, "customer-a", "nope", []
             )
 
     def test_unknown_addon_fails_before_creating_anything(self):
         with self.assertRaises(RepositoryNotFound):
             self.service.create_linked(
-                self.workspace, "customer-a", "19.0", "19.0", ["unknown"]
+                self.workspace, "customer-a", "19.0", ["unknown"]
             )
         self.assertFalse((self.root / "customer-a").exists())
 
@@ -108,7 +113,7 @@ class TestCreateLinked(LinkedWorktreeTestCase):
 
         with self.assertRaises(OdooCliError) as cm:
             self.service.create_linked(
-                self.workspace, "customer-a", "19.0", "19.0", ["enterprise"]
+                self.workspace, "customer-a", "19.0", ["enterprise"]
             )
         self.assertIn("standard repository", cm.exception.message)
         self.assertFalse((self.root / "customer-a").exists())
@@ -123,7 +128,7 @@ class TestCreateLinked(LinkedWorktreeTestCase):
         )
         with self.assertRaises(ProcessError):
             self.service.create_linked(
-                self.workspace, "customer-a", "19.0", "19.0",
+                self.workspace, "customer-a", "19.0",
                 ["customer-a-addons"],
             )
         # symlinks were created before the failure; everything is rolled back
@@ -141,7 +146,7 @@ class TestCompleteLinked(LinkedWorktreeTestCase):
             repos=("documentation", "enterprise"),
         )
         result = self.service.create_linked(
-            self.workspace, "customer-a", "19.0", "19.0", ["customer-a-addons"]
+            self.workspace, "customer-a", "19.0", ["customer-a-addons"]
         )
         self.assertTrue(result.existed)
         self.assertEqual(result.checked_out, ["customer-a-addons"])
@@ -157,7 +162,7 @@ class TestCompleteLinked(LinkedWorktreeTestCase):
         make_worktree(self.root, "other", version="19.0")
         with self.assertRaises(WorktreeExists):
             self.service.create_linked(
-                self.workspace, "customer-a", "19.0", "other", []
+                self.workspace, "customer-a", "other", []
             )
 
     def test_leftover_with_dangling_symlinks_is_repaired(self):
@@ -167,7 +172,7 @@ class TestCompleteLinked(LinkedWorktreeTestCase):
         path.mkdir()
         os.symlink("../gone/odoo", path / "odoo")
         result = self.service.create_linked(
-            self.workspace, "customer-a", "19.0", "19.0", []
+            self.workspace, "customer-a", "19.0", []
         )
         self.assertFalse(result.existed)
         self.assertEqual(result.linked, ["odoo", "documentation", "enterprise"])

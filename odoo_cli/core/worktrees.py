@@ -22,7 +22,6 @@ from odoo_cli.core import release
 from odoo_cli.core.errors import (
     InvalidWorkspace,
     OdooCliError,
-    VersionNotFound,
     WorktreeExists,
     WorktreeNotFound,
 )
@@ -159,7 +158,7 @@ class WorktreeService:
         if worktree.is_linked:
             raise WorktreeExists(
                 f"worktree '{worktree.name}' already exists and is linked",
-                hint="re-run with --linked-from to complete it",
+                hint="re-run with --linked to complete it",
             )
         detected = self.detect_version(worktree)
         if release.normalize_version(version) != detected:
@@ -198,13 +197,15 @@ class WorktreeService:
         self,
         workspace: Workspace,
         name: str,
-        version: str,
         source_name: str,
         addons: list[str],
     ) -> WorktreeCreateResult:
         """Linked worktree: standard repos symlinked from the source
         worktree, addon repositories checked out for real at the root.
-        Nothing is stored: the `odoo/` symlink IS the linked marker."""
+        Nothing is stored: the `odoo/` symlink IS the linked marker.
+
+        The worktree's version is the source's (detected from its
+        release.py); addon checkouts branch from that version."""
         standard = {*DEFAULT_REPOS, *OPTIONAL_REPOS}
         for addon in addons:
             if addon in standard:
@@ -224,14 +225,15 @@ class WorktreeService:
             raise WorktreeNotFound(
                 f"source worktree '{source_name}' does not exist"
             )
-        source_version = self.detect_version(
-            Worktree(name=source_name, path=source)
-        )
-        if release.normalize_version(version) != source_version:
-            raise VersionNotFound(
-                f"requested version {version} does not match source worktree "
-                f"'{source_name}' (detected {source_version})"
+        source_worktree = Worktree(name=source_name, path=source)
+        if source_worktree.is_linked:
+            # symlink chains break silently when the middle worktree is
+            # removed; always link to the real checkouts
+            raise OdooCliError(
+                f"'{source_name}' is itself a linked worktree",
+                hint=f"link from '{source_worktree.linked_from}' instead",
             )
+        version = self.detect_version(source_worktree)
 
         # validate every addon before touching the filesystem
         addon_repos = [self.repositories.get(workspace, a) for a in addons]

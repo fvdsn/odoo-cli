@@ -14,11 +14,12 @@ def worktree() -> None:
 
 @worktree.command()
 @click.argument("name")
-@click.argument("version", required=False)
+@click.argument("source", required=False, metavar="[SOURCE]")
 @click.option(
-    "--linked-from",
-    metavar="WORKTREE",
-    help="Create a linked worktree: symlink standard repos from WORKTREE.",
+    "--linked",
+    is_flag=True,
+    help="Share SOURCE's checkouts through symlinks instead of branching; "
+    "SOURCE must be an existing worktree.",
 )
 @click.option(
     "--addon",
@@ -26,47 +27,66 @@ def worktree() -> None:
     multiple=True,
     metavar="REPOSITORY",
     help="Check out an added repository at the worktree root (repeatable, "
-    "requires --linked-from).",
+    "requires --linked).",
 )
 @click.pass_obj
 def create(
     ctx: CliContext,
     name: str,
-    version: str | None,
-    linked_from: str | None,
+    source: str | None,
+    linked: bool,
     addons: tuple[str, ...],
 ) -> None:
-    """Create worktree NAME on VERSION.
+    """Create worktree NAME from SOURCE.
 
-    With a single argument, the name is also the version and must resolve
-    to an Odoo ref (`odoo worktree create 19.0`, `... master`).
+    Every repo gets a branch NAME starting at SOURCE, a version
+    (`odoo worktree create fix-pos 19.0`). With a single argument, the
+    name is also the source and must resolve to an Odoo ref
+    (`odoo worktree create 19.0`, `... master`).
+
+    With --linked, SOURCE names an existing worktree whose checkouts are
+    shared through symlinks (`odoo worktree create customer-a 19.0
+    --linked`); only --addon repositories get real checkouts.
     """
     services, out = ctx.services, ctx.output
-    if addons and not linked_from:
-        raise click.UsageError("--addon requires --linked-from")
-    single_argument = version is None
-    version = version or name
+    if addons and not linked:
+        raise click.UsageError("--addon requires --linked")
+    if linked and source is None:
+        raise click.UsageError(
+            "--linked needs a source worktree: "
+            "`odoo worktree create NAME SOURCE --linked`"
+        )
+    single_argument = source is None
+    source = source or name
     workspace = services.workspace.resolve()
 
     try:
-        if linked_from:
+        if linked:
             result = services.worktrees.create_linked(
-                workspace, name, version, linked_from, list(addons)
+                workspace, name, source, list(addons)
             )
         else:
-            result = services.worktrees.create_full(workspace, name, version)
+            result = services.worktrees.create_full(workspace, name, source)
     except VersionNotFound as exc:
-        if single_argument and exc.hint is None:
-            exc.hint = (
-                f"'{name}' does not resolve to an Odoo version; use "
-                "`odoo worktree create NAME VERSION` to name a worktree freely"
-            )
+        if exc.hint is None:
+            if single_argument:
+                exc.hint = (
+                    f"'{name}' does not resolve to an Odoo version; use "
+                    "`odoo worktree create NAME VERSION` to name a worktree "
+                    "freely"
+                )
+            elif (workspace.root / source / "odoo").exists():
+                exc.hint = (
+                    f"'{source}' is a worktree; share its checkouts with "
+                    f"`odoo worktree create {name} {source} --linked` "
+                    "(duplicating a worktree is not supported yet)"
+                )
         raise
 
     if result.existed:
         out.echo(f"worktree {name} already exists; added only what was missing")
     for repo_name in result.linked:
-        out.echo(f"linked {repo_name} from {linked_from}")
+        out.echo(f"linked {repo_name} from {source}")
     for repo_name in result.checked_out:
         out.echo(f"checked out {repo_name}")
     for skipped in result.skipped:

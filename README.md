@@ -48,7 +48,7 @@ The workspace looks like:
 | `odoo config get/set/list` | Edit the shared odoo.conf |
 | `odoo repo enable <enterprise\|themes\|upgrade>` | Enable an optional repo |
 | `odoo repo add <name> <url>` | Clone a custom addon repository |
-| `odoo worktree create <name> [version] [--linked-from SRC --addon REPO]` | New worktree |
+| `odoo worktree create <name> [source] [--linked --addon REPO]` | New worktree |
 | `odoo venv` | Rebuild the venv for the current worktree |
 
 Commands infer their target from the current directory (or `-w`/`-d`); the

@@ -328,8 +328,7 @@ Commands:
 odoo repo add customer-a-addons git@github.com:customer/customer-a-addons.git
 odoo repo add support-tools git@github.com:odoo/support-tools.git
 
-odoo worktree create customer-a 19.0 \
-  --linked-from 19.0 \
+odoo worktree create customer-a 19.0 --linked \
   --addon customer-a-addons \
   --addon support-tools
 

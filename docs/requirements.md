@@ -465,7 +465,7 @@ creation, at which point explicit `-c` becomes unnecessary on those versions —
  - **Customer support**: multiple dbs per version, explicit db names.
    `odoo start -d customer-a` from within `~/odoo/19.0/`.
  - **Customer support with custom addons**: linked worktree with isolated addon repos and shared Odoo source.
-   `odoo worktree create customer-a 19.0 --linked-from 19.0 --addon customer-a-addons`
+   `odoo worktree create customer-a 19.0 --linked --addon customer-a-addons`
 
 ## Phases
 
@@ -622,13 +622,22 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
    - the worktree's version remains derived from `odoo/odoo/release.py`, never
      from the branch name
 
-### `odoo worktree create --linked-from` [v1]
- - `odoo worktree create customer-a 19.0 --linked-from 19.0 --addon customer-a-addons --addon support-tools`
+### `odoo worktree create --linked` [v1]
+ - `odoo worktree create customer-a 19.0 --linked --addon customer-a-addons --addon support-tools`
  - creates a linked worktree for custom addon work on an existing Odoo source tree
- - `--linked-from $WORKTREE` — `$WORKTREE` must already exist
-   - the requested version must match the source worktree's detected Odoo version
+ - the SOURCE argument is the unified "what this worktree starts from" slot:
+   a version/ref for a full worktree, an existing worktree's name with
+   `--linked`; both readings coincide for version-named worktrees
+ - with `--linked`, SOURCE must name an existing full worktree
+   - the linked worktree's version is the source's detected Odoo version
+   - a linked worktree is rejected as source (symlink chains break silently
+     when the middle worktree is removed); the error hints at the real source
    - standard source repositories (`odoo`, `documentation`, and enabled standard repositories such as `enterprise` and `themes`) are symlinked from the source worktree
    - attached addon repositories are checked out as real git worktrees at the linked worktree root
+ - planned [v2]: SOURCE naming a worktree *without* `--linked` duplicates it —
+   every repo the source has (addons included) is checked out on a branch
+   named after the new worktree, starting from the source's branches; until
+   then this case errors with a hint pointing at `--linked`
  - `--addon $REPOSITORY` may be passed multiple times
  - `--addon` only accepts repository names that are present in `.repositories/` (e.g. cloned through `odoo repo add`)
  - `--addon` is a creation-time checkout action; addon membership is thereafter determined by the directories present at the worktree root, not by any stored list

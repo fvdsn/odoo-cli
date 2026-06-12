@@ -272,7 +272,7 @@ class TestV1Workflows(unittest.TestCase):
         self.assertEqual(code, 0, out)
         code, out = self.run_cli(
             "worktree", "create", "customer-a", self.version,
-            "--linked-from", self.version, "--addon", "e2e-addons",
+            "--linked", "--addon", "e2e-addons",
         )
         self.assertEqual(code, 0, out)
 
