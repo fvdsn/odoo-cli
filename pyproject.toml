@@ -2,7 +2,7 @@
 name = "odoo-cli-official"
 dynamic = ["version"]
 description = "CLI tool to manage and develop local Odoo instances"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 readme = "README.md"
 license = "MIT"
 authors = [
@@ -14,6 +14,7 @@ classifiers = [
     "Environment :: Console",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -35,7 +36,7 @@ path = "odoo_cli/__init__.py"
 
 [tool.ruff]
 line-length = 100
-target-version = "py311"
+target-version = "py310"
 extend-exclude = ["odoo_cli/_vendor"]
 
 [tool.ruff.lint]

@@ -21,11 +21,11 @@ Runtime Python dependencies should be limited to:
 Runtime target:
 
 - Debian 12 Bookworm or newer
-- Python 3.11 or newer
+- Python 3.10 or newer (the Ubuntu 22.04 LTS system interpreter)
 
 Reasons:
 
-- Debian 12 provides Python 3.11, with the standard-library `configparser` we
+- Ubuntu 22.04 provides Python 3.10, with the standard-library `configparser` we
   use to read/write `odoo.conf`
 - bash installers should only need to find a supported Python interpreter, not
   manage Python package installation
@@ -692,7 +692,7 @@ Machine output:
 ## Testing strategy
 
 The default test suite should be fast, deterministic, and runnable on a machine
-that has only Python 3.11 and the vendored dependencies. Tests that need git,
+that has only Python 3.10 and the vendored dependencies. Tests that need git,
 PostgreSQL, or a real Odoo checkout should be clearly separated.
 
 Coverage works at two levels:
@@ -714,7 +714,7 @@ tests/
     fixtures/       small workspace/repository/addon fixtures
 ```
 
-Default command (any Python >= 3.11; a bare `python` may resolve older):
+Default command (any Python >= 3.10; a bare `python` may resolve older):
 
 ```text
 python3 -m unittest discover

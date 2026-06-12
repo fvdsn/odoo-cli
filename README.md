@@ -13,7 +13,7 @@ uv tool install odoo-cli-official   # installs the `odoo` executable
 ```
 
 Runtime is the Python standard library plus a vendored
-[click](https://click.palletsprojects.com) (Python 3.11+); nothing else.
+[click](https://click.palletsprojects.com) (Python 3.10+); nothing else.
 
 ## Quick start
 
@@ -57,7 +57,7 @@ database defaults to the worktree name.
 ## Development
 
 ```bash
-# any Python >= 3.11 (a bare `python` may resolve to an older interpreter)
+# any Python >= 3.10 (a bare `python` may resolve to an older interpreter)
 python3 -m unittest discover           # unit + cli + integration (fast, no network)
 ODOO_CLI_E2E=1 ODOO_CLI_E2E_ODOO_REPO=~/src/odoo \
     python3 -m unittest discover tests/e2e -v  # real-Odoo flows (slow, opt-in)
