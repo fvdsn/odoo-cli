@@ -13,15 +13,15 @@ metadata when the same fact can be inferred from those sources.
 
 ## Specs And Design
 
-The product requirements, use cases, and architecture live in `docs/`.
+The product requirements, use cases, and architecture live in `specs/`.
 Read those files before changing behavior:
 
-- `docs/requirements.md`
-- `docs/usecase.md`
-- `docs/architecture.md`
+- `specs/requirements.md`
+- `specs/usecase.md`
+- `specs/architecture.md`
 
-Versioned follow-up specs such as `docs/requirements_v2.md`,
-`docs/requirements_v3.md`, and `docs/usecase_v2.md` describe later-stage
+Versioned follow-up specs such as `specs/requirements_v2.md`,
+`specs/requirements_v3.md`, and `specs/usecase_v2.md` describe later-stage
 features. Do not duplicate those specs here.
 
 ## Project Shape
