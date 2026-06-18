@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
+from odoo_cli.core import agent_assets
 from odoo_cli.core.errors import VersionNotFound
 
 
@@ -98,5 +99,9 @@ def create(
 
     out.echo("Setting up the virtual environment...")
     services.venvs.ensure(workspace, result.worktree)
+    try:  # best-effort: a thin AGENTS.md for an agent started in this worktree
+        agent_assets.write_worktree_docs(result.worktree)
+    except OSError as exc:
+        out.warn(f"could not write agent context: {exc}")
     out.success(f"worktree {name} ready at {result.worktree.path}")
     out.echo(f"Next: cd {result.worktree.path} && odoo start")

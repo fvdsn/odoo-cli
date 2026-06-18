@@ -11,6 +11,7 @@ from pathlib import Path
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext, Services
 from odoo_cli.cli.output import Output
+from odoo_cli.core import agent_assets
 from odoo_cli.core.models import Workspace, Worktree
 from odoo_cli.core.odoo_conf import OdooConf, is_set
 from odoo_cli.core.repositories import DEFAULT_REPOS
@@ -137,8 +138,29 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
     if not services.postgres.check_connection(workspace.config):
         _configure_detected_port(services, out, workspace.config)
 
+    _setup_agent_context(services, out, workspace, worktree)
+
     out.success(f"Workspace ready at {workspace.root}")
     out.echo(f"Next: cd {worktree.path} && odoo start")
+
+
+def _setup_agent_context(
+    services: Services, out: Output, workspace: Workspace, worktree: Worktree
+) -> None:
+    """Write the workspace AGENTS.md files and install skills for any installed
+    harness. Best-effort: agent setup never fails `odoo init`."""
+    try:
+        agent_assets.write_workspace_docs(workspace)
+        agent_assets.write_worktree_docs(worktree)
+        result = agent_assets.install_skills(env=services.env)
+    except OSError as exc:
+        out.warn(f"could not set up agent context: {exc}")
+        return
+    for dest in result.skipped:
+        out.warn(
+            f"kept existing skill '{dest.name}' in {dest.parent} "
+            "(not installed by odoo-cli)"
+        )
 
 
 def _configure_detected_port(services: Services, out: Output, conf: OdooConf) -> None:
