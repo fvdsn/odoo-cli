@@ -25,6 +25,15 @@ auto-fix anything ambiguous.
   when a file is under major change (do a separate *move* commit first).
 - For deep security auditing, also use the `odoo-security` skill.
 
+## Version traps (don't trust a remembered API)
+
+Odoo's ORM and view/template syntax change between major versions; a frequent
+mistake is flagging — or writing — an API or attribute that was renamed or
+removed (e.g. `attrs=`/`<tree>`/`name_get`/`read_group`). Confirm an API or
+syntax is current for **this worktree's version** before judging it: see the
+**`odoo-changelog`** skill (baked-in 17.0–20.0 changes) and, when in doubt, the
+worktree's `documentation/.../orm/changelog.rst`. Don't rely on memory.
+
 ## Module structure & file naming
 
 - Standard directories: `models/`, `views/`, `controllers/`, `data/`,
