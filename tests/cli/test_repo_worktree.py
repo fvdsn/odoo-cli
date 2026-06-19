@@ -128,6 +128,48 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
         self.assertIn("worktree 19.0 ready", result.output)
         self.assertTrue((self.root / "19.0" / "odoo").is_dir())
 
+    def test_single_argument_infers_base_version_from_name_prefix(self):
+        name = "19.0-my-worktree"
+        for repo in ("odoo.git", "documentation.git"):
+            repo_path = str(self.repos() / repo)
+            self.runner.expect(
+                "git", "-C", repo_path, "rev-parse", "--verify", "--quiet",
+                f"refs/heads/{name}", returncode=1,
+            )
+            self.runner.expect(
+                "git", "-C", repo_path, "worktree", "add",
+                effect=self.worktree_effect("19.0"),
+            )
+
+        result = self.invoke("worktree", "create", name)
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn(f"worktree {name} ready", result.output)
+        self.assertTrue((self.root / name / "odoo").is_dir())
+        add = next(
+            c for c in self.runner.calls
+            if "add" in c and str(self.root / name / "odoo") in c
+        )
+        self.assertEqual(add[-2:], (str(self.root / name / "odoo"), "19.0"))
+
+    def test_single_argument_inferred_base_keeps_version_not_found_hint(self):
+        repo = str(self.repos() / "odoo.git")
+        self.runner.expect(
+            "git", "-C", repo, "rev-parse", "--verify", "--quiet",
+            "refs/heads/2024.1", returncode=1,
+        )
+        # the repo itself is healthy; only the inferred branch lookup fails
+        self.runner.expect(
+            "git", "-C", repo, "rev-parse", "--verify", "--quiet", "HEAD",
+            stdout="abc123\n",
+        )
+
+        result = self.invoke("worktree", "create", "2024.1-my-worktree")
+
+        self.assertEqual(result.exit_code, 1)
+        self.assertIsNone(result.exception.hint)
+        self.assertIn("has no branch '2024.1'", str(result.exception))
+
     def test_single_argument_must_be_a_version(self):
         repo = str(self.repos() / "odoo.git")
         self.runner.expect("git", "-C", repo, "rev-parse", returncode=1)

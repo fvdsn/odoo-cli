@@ -5,7 +5,7 @@ from pathlib import Path
 from odoo_cli.core.errors import VersionNotFound, WorktreeExists
 from odoo_cli.core.models import Workspace
 from odoo_cli.core.repositories import RepositoryService
-from odoo_cli.core.worktrees import WorktreeService
+from odoo_cli.core.worktrees import WorktreeService, infer_base_version
 from odoo_cli.util.git import Git
 from odoo_cli.util.process import ProcessError
 from tests.fixtures.process import FakeProcessRunner
@@ -29,6 +29,33 @@ class WorktreeServiceTestCase(unittest.TestCase):
 
     def allow_remote_urls(self):
         self.runner.expect("git", stdout="https://example.com/x.git\n")
+
+
+class TestInferBaseVersion(unittest.TestCase):
+    def test_exact_versions(self):
+        self.assertEqual(infer_base_version("master"), "master")
+        self.assertEqual(infer_base_version("19.0"), "19.0")
+        self.assertEqual(infer_base_version("6.1"), "6.1")
+        self.assertEqual(infer_base_version("saas-17"), "saas-17")
+        self.assertEqual(infer_base_version("saas-19.3"), "saas-19.3")
+
+    def test_prefixed_worktree_names(self):
+        self.assertEqual(infer_base_version("master-ux-polish"), "master")
+        self.assertEqual(infer_base_version("19.0-my-worktree"), "19.0")
+        self.assertEqual(infer_base_version("saas-19.3-fix"), "saas-19.3")
+
+    def test_forward_port_style_uses_first_version(self):
+        self.assertEqual(infer_base_version("19.0-18.0-fix-fw"), "19.0")
+        self.assertEqual(infer_base_version("master-19.0-fix-fw"), "master")
+        self.assertEqual(
+            infer_base_version("saas-19.2-saas-19.1-fix-fw"), "saas-19.2"
+        )
+
+    def test_non_prefix_names_do_not_match(self):
+        self.assertIsNone(infer_base_version("my-feature"))
+        self.assertIsNone(infer_base_version("customer-19.0"))
+        self.assertIsNone(infer_base_version("masterfoo"))
+        self.assertIsNone(infer_base_version("saas-19.3foo"))
 
 
 class TestCreateFull(WorktreeServiceTestCase):

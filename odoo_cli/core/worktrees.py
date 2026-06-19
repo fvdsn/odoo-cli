@@ -15,6 +15,7 @@ requested version when the two differ (`odoo worktree create 19.0` checks out
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from dataclasses import dataclass, field
 
@@ -33,6 +34,25 @@ from odoo_cli.core.repositories import (
     validate_name,
 )
 from odoo_cli.util.git import Git
+
+# Odoo version identifiers usable as a worktree-name prefix, following the
+# odoo/odoo branch-naming convention: `master`, a stable series (`19.0`), or a
+# saas series (`saas-19.3`). Matched only at the start and only when followed by
+# `-` or end-of-name; greedy on the saas minor so `saas-19.3` beats `saas-19`.
+_BASE_VERSION = r"master|saas-\d+(?:\.\d+)?|\d+\.\d+"
+_BASE_PREFIX_RE = re.compile(rf"^(?P<base>{_BASE_VERSION})(?:-|$)")
+
+
+def infer_base_version(name: str) -> str | None:
+    """Base version inferred from a worktree name's prefix, or None.
+
+    `19.0-my-feature` -> `19.0`, `saas-19.3-fix` -> `saas-19.3`,
+    `master-foo` -> `master`, `19.0` -> `19.0`. For a forward-port-style name the
+    first version wins (`19.0-18.0-fw` -> `19.0`). A name without a version
+    prefix (`my-feature`, `customer-19.0`, `masterfoo`) returns None.
+    """
+    match = _BASE_PREFIX_RE.match(name)
+    return match.group("base") if match else None
 
 
 def discover(workspace: Workspace) -> list[Worktree]:

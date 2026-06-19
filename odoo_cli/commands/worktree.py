@@ -6,6 +6,7 @@ from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
 from odoo_cli.core import agent_assets
 from odoo_cli.core.errors import VersionNotFound
+from odoo_cli.core.worktrees import infer_base_version
 
 
 @click.group()
@@ -62,7 +63,12 @@ def create(
             "`odoo worktree create NAME SOURCE --linked`"
         )
     single_argument = source is None
-    source = source or name
+    if single_argument:
+        # `odoo worktree create 19.0-my-feature` infers base 19.0 from the
+        # version prefix (odoo/odoo branch convention); a name without a version
+        # prefix stays the source/ref, as before.
+        source = infer_base_version(name) or name
+    inferred_base = single_argument and source != name
     workspace = services.workspace.resolve()
 
     try:
@@ -77,10 +83,13 @@ def create(
         else:
             result = services.worktrees.create_full(workspace, name, source)
     except VersionNotFound as exc:
-        if single_argument and exc.hint is None:
+        # only nudge toward `NAME VERSION` when the name wasn't a version prefix;
+        # an inferred base that doesn't resolve speaks for itself
+        if single_argument and not inferred_base and exc.hint is None:
             exc.hint = (
                 f"'{name}' does not resolve to an Odoo version; use "
-                "`odoo worktree create NAME VERSION` to name a worktree freely"
+                "`odoo worktree create NAME VERSION` to name a worktree freely, "
+                "or prefix the name with a version (`19.0-my-feature`)"
             )
         raise
 
