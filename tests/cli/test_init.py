@@ -98,6 +98,8 @@ class TestInit(InitCommandTestCase):
         clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertIn("--filter=blob:none", clone)
         self.assertIn("this can take a few minutes", result.output)
+        # the download message names the destination workspace dir
+        self.assertIn(f"Downloading the Odoo sources to {self.root}", result.output)
 
     def test_explicit_version(self):
         self.script_happy_path(version="18.0")
