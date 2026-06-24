@@ -17,7 +17,9 @@ from __future__ import annotations
 import os
 import re
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from odoo_cli.core import release
 from odoo_cli.core.errors import (
@@ -25,14 +27,17 @@ from odoo_cli.core.errors import (
     OdooCliError,
     WorktreeExists,
     WorktreeNotFound,
+    WorktreeRemovalBlocked,
 )
 from odoo_cli.core.models import Workspace, Worktree
+from odoo_cli.core.postgres import PostgresService
 from odoo_cli.core.repositories import (
     DEFAULT_REPOS,
     OPTIONAL_REPOS,
     RepositoryService,
     validate_name,
 )
+from odoo_cli.util import net
 from odoo_cli.util.git import Git
 
 # Odoo version identifiers usable as a worktree-name prefix, following the
@@ -64,6 +69,18 @@ def discover(workspace: Workspace) -> list[Worktree]:
         if odoo_entry.is_dir() or odoo_entry.is_symlink():
             worktrees.append(Worktree(name=entry.name, path=entry))
     return worktrees
+
+
+def find_dependents(workspace: Workspace, name: str) -> list[str]:
+    """Linked worktrees that share `name`'s checkouts through symlinks.
+
+    Removing `name` would dangle their `odoo/` symlinks, so removal refuses
+    while any exist (even under --force)."""
+    return sorted(
+        wt.name
+        for wt in discover(workspace)
+        if wt.name != name and wt.linked_from == name
+    )
 
 
 @dataclass
@@ -102,10 +119,27 @@ class AddRepoResult:
     reason: str = ""
 
 
+@dataclass
+class WorktreeRemoveResult:
+    name: str
+    removed_path: Path
+    deleted_branches: list[str] = field(default_factory=list)
+    dropped_databases: list[str] = field(default_factory=list)
+    freed_run_state: bool = False
+
+
 class WorktreeService:
-    def __init__(self, git: Git, repositories: RepositoryService):
+    def __init__(
+        self,
+        git: Git,
+        repositories: RepositoryService,
+        postgres: PostgresService | None = None,
+        port_free: Callable[[int], bool] = net.port_free,
+    ):
         self.git = git
         self.repositories = repositories
+        self.postgres = postgres
+        self.port_free = port_free
 
     def _prepare_create(
         self, workspace: Workspace, name: str
@@ -611,3 +645,169 @@ class WorktreeService:
         return release.normalize_version(
             release.read_release(worktree.path).version
         )
+
+    # -- removal -----------------------------------------------------------
+
+    def remove(
+        self,
+        workspace: Workspace,
+        name: str,
+        *,
+        drop_db: bool = False,
+        delete_branches: bool = False,
+        force: bool = False,
+    ) -> WorktreeRemoveResult:
+        """Remove worktree `name`: delete its directory and free the git
+        registrations and `.run` state. Branches are kept by default (so
+        committed work survives in the bare repos); the derived database is
+        kept too. `delete_branches`/`drop_db` opt into those; `force` skips
+        the safety checks below.
+
+        Safety gate (refuses unless overridden): a worktree may hold the only
+        copy of work. Linked dependents always refuse (their symlinks would
+        dangle). With `force`, the remaining checks are skipped."""
+        validate_name(name, kind="worktree name")
+        available = {wt.name: wt for wt in discover(workspace)}
+        if name not in available:
+            names = ", ".join(sorted(available)) or "(none)"
+            raise WorktreeNotFound(
+                f"no worktree named '{name}' in {workspace.root}",
+                hint=f"available worktrees: {names}",
+            )
+        worktree = available[name]
+
+        dependents = find_dependents(workspace, name)
+        if dependents:
+            raise WorktreeRemovalBlocked(
+                f"worktree '{name}' is the source of linked worktree(s): "
+                f"{', '.join(dependents)}",
+                hint=(
+                    "remove the linked worktree(s) first, e.g. "
+                    f"`odoo worktree remove {dependents[0]}`"
+                ),
+            )
+
+        # branches named after the worktree are the per-worktree feature
+        # branches `create` makes; a version-named worktree (`19.0`, `master`)
+        # checks out the shared version branch instead and must never delete it
+        deletable = (
+            [] if infer_base_version(name) == name
+            else self._feature_branches(workspace, worktree)
+        )
+
+        if not force:
+            reasons = self._removal_blockers(
+                workspace, worktree, deletable, delete_branches
+            )
+            if reasons:
+                raise WorktreeRemovalBlocked(
+                    f"cannot remove worktree '{name}': " + "; ".join(reasons),
+                    hint=(
+                        "commit, push, or stop as needed, then pass --force to "
+                        "override (or --purge to drop everything)"
+                    ),
+                )
+
+        databases = self._databases_for(workspace, name) if drop_db else []
+
+        result = WorktreeRemoveResult(name=name, removed_path=worktree.path)
+        shutil.rmtree(worktree.path)
+        # a removed checkout leaves a registration that would block git branch
+        # -D (and a later same-name create)
+        self.prune_stale_entries(workspace)
+
+        if delete_branches:
+            for bare, branch in deletable:
+                self.git.delete_branch(bare, branch)
+                result.deleted_branches.append(f"{bare.stem}:{branch}")
+
+        if drop_db and databases:
+            conf = workspace.config
+            for db in databases:
+                if self.postgres.db_exists(conf, db):
+                    self.postgres.drop_db(conf, db)
+                    result.dropped_databases.append(db)
+
+        run_dir = workspace.run_dir / name
+        if run_dir.is_dir():
+            shutil.rmtree(run_dir)
+            result.freed_run_state = True
+        return result
+
+    def _removal_blockers(
+        self,
+        workspace: Workspace,
+        worktree: Worktree,
+        deletable: list[tuple[Path, str]],
+        delete_branches: bool,
+    ) -> list[str]:
+        reasons: list[str] = []
+        dirty = [c.name for c in self._real_checkouts(worktree) if self.git.is_dirty(c)]
+        if dirty:
+            reasons.append(f"uncommitted changes in {', '.join(sorted(dirty))}")
+        if delete_branches:
+            unmerged = [
+                branch
+                for bare, branch in deletable
+                if not self.git.tip_in_other_ref(bare, branch)
+            ]
+            if unmerged:
+                reasons.append(
+                    f"branch '{unmerged[0]}' has commits not merged anywhere else"
+                )
+        live = self._live_ports(workspace, worktree.name)
+        if live:
+            reasons.append(
+                f"a server may be running (port {live[0]} is in use)"
+            )
+        return reasons
+
+    def _real_checkouts(self, worktree: Worktree) -> list[Path]:
+        """Non-symlink git checkouts directly under the worktree root. Excludes
+        symlinks: in a linked worktree those point at the source's checkouts,
+        whose state is the source's concern, not this worktree's."""
+        checkouts = []
+        for child in sorted(worktree.path.iterdir()):
+            if child.name.startswith(".") or child.is_symlink() or not child.is_dir():
+                continue
+            if (child / ".git").exists():
+                checkouts.append(child)
+        return checkouts
+
+    def _feature_branches(
+        self, workspace: Workspace, worktree: Worktree
+    ) -> list[tuple[Path, str]]:
+        """(bare repo, branch) for each real checkout on a branch named after
+        the worktree — the per-worktree feature branch `create` makes."""
+        branches = []
+        for checkout in self._real_checkouts(worktree):
+            if self.git.current_branch(checkout) != worktree.name:
+                continue
+            bare = workspace.repositories_dir / f"{checkout.name}.git"
+            if bare.is_dir():
+                branches.append((bare, worktree.name))
+        return branches
+
+    def _databases_for(self, workspace: Workspace, name: str) -> list[str]:
+        """Databases a `--drop-db` would drop: the default (worktree name) plus
+        any other db that has run under this worktree (`.run/{name}/{db}`)."""
+        databases = {name}
+        run_dir = workspace.run_dir / name
+        if run_dir.is_dir():
+            databases.update(c.name for c in run_dir.iterdir() if c.is_dir())
+        return sorted(databases)
+
+    def _live_ports(self, workspace: Workspace, name: str) -> list[int]:
+        """Reserved ports under `.run/{name}` that are currently bound — the
+        best 'a server is running' signal v1 has (there is no pid file)."""
+        live = []
+        run_dir = workspace.run_dir / name
+        if not run_dir.is_dir():
+            return live
+        for ports_file in sorted(run_dir.glob("*/ports")):
+            for line in ports_file.read_text().splitlines():
+                _, _, value = line.partition("=")
+                value = value.strip()
+                if value.isdigit() and not self.port_free(int(value)):
+                    live.append(int(value))
+        return live

@@ -59,7 +59,7 @@ class Services:
 
     @cached_property
     def worktrees(self) -> WorktreeService:
-        return WorktreeService(self.git, self.repositories)
+        return WorktreeService(self.git, self.repositories, self.postgres)
 
     @cached_property
     def venvs(self) -> VenvService:

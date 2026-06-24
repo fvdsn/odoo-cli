@@ -245,6 +245,64 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
         self.assertEqual(add[-1], "fix-pos")
 
 
+class TestWorktreeRemove(RepoWorktreeTestCase):
+    def make_removable(self, name, *, version="19.0", repos=("odoo", "documentation")):
+        make_worktree(
+            self.root, name, version=version,
+            repos=tuple(r for r in repos if r != "odoo"),
+        )
+        for repo in repos:
+            checkout = self.root / name / repo
+            checkout.mkdir(parents=True, exist_ok=True)
+            (checkout / ".git").write_text("gitdir: x\n")
+
+    def test_remove_happy_path(self):
+        self.make_removable("fix-pos")
+        # override the setUp default ("ok"): clean status, detached HEAD, prune
+        self.runner.expect("git", stdout="")
+        result = self.invoke("worktree", "remove", "fix-pos")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("removed worktree fix-pos", result.output)
+        self.assertFalse((self.root / "fix-pos").exists())
+
+    def test_rm_alias(self):
+        self.make_removable("fix-pos")
+        self.runner.expect("git", stdout="")
+        result = self.invoke("worktree", "rm", "fix-pos")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertFalse((self.root / "fix-pos").exists())
+
+    def test_remove_unknown_worktree(self):
+        result = self.invoke("worktree", "remove", "ghost")
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("no worktree named 'ghost'", str(result.exception))
+
+    def test_dirty_worktree_blocks(self):
+        self.make_removable("fix-pos")
+        # the setUp default returns "ok" for git status -> dirty
+        result = self.invoke("worktree", "remove", "fix-pos")
+        self.assertEqual(result.exit_code, 1)
+        self.assertIn("uncommitted changes", str(result.exception))
+        self.assertTrue((self.root / "fix-pos").exists())
+
+    def test_purge_drops_db_and_deletes_branch(self):
+        self.make_removable("fix-pos")
+        self.runner.expect("git", stdout="")
+        for repo in ("odoo", "documentation"):
+            self.runner.expect(
+                "git", "-C", str(self.root / "fix-pos" / repo),
+                "symbolic-ref", stdout="fix-pos\n",
+            )
+        self.runner.expect("psql", stdout="1\n")
+        self.runner.expect("dropdb")
+        result = self.invoke("worktree", "remove", "fix-pos", "--purge")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("dropped database fix-pos", result.output)
+        self.assertIn("deleted branch odoo:fix-pos", result.output)
+        self.assertFalse((self.root / "fix-pos").exists())
+        self.assertTrue(any(c[0] == "dropdb" for c in self.runner.calls))
+
+
 class TestVenvCommand(RepoWorktreeTestCase):
     def test_rebuild(self):
         make_worktree(self.root, "19.0", version="19.0")

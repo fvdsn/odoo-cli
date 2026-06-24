@@ -1,4 +1,4 @@
-"""`odoo worktree create`: full and linked worktrees (list/remove are v2)."""
+"""`odoo worktree create` and `odoo worktree remove`."""
 
 from __future__ import annotations
 
@@ -114,3 +114,64 @@ def create(
         out.warn(f"could not write agent context: {exc}")
     out.success(f"worktree {name} ready at {result.worktree.path}")
     out.echo(f"Next: cd {result.worktree.path} && odoo start")
+
+
+@worktree.command()
+@click.argument("name")
+@click.option("--drop-db", is_flag=True, help="Also drop the worktree's database(s).")
+@click.option(
+    "--delete-branches",
+    is_flag=True,
+    help="Delete the per-worktree feature branches (never a shared version "
+    "branch); kept by default so committed work survives.",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Skip the safety checks (uncommitted changes, unmerged branches, a "
+    "running server).",
+)
+@click.option(
+    "--purge",
+    is_flag=True,
+    help="Remove everything: implies --drop-db --delete-branches --force.",
+)
+@click.pass_obj
+def remove(
+    ctx: CliContext,
+    name: str,
+    drop_db: bool,
+    delete_branches: bool,
+    force: bool,
+    purge: bool,
+) -> None:
+    """Remove worktree NAME.
+
+    Deletes the worktree directory and frees its git registrations and run
+    state. By default the per-worktree branches and the database are kept, and
+    removal refuses when there is work to lose — uncommitted changes, branches
+    with unmerged commits (only when --delete-branches), or a running server —
+    or when other worktrees are linked from this one.
+
+    --purge bundles --drop-db --delete-branches --force to wipe everything; it
+    still refuses on linked dependents (remove those first).
+    """
+    services, out = ctx.services, ctx.output
+    if purge:
+        drop_db = delete_branches = force = True
+    workspace = services.workspace.resolve()
+    result = services.worktrees.remove(
+        workspace,
+        name,
+        drop_db=drop_db,
+        delete_branches=delete_branches,
+        force=force,
+    )
+    for branch in result.deleted_branches:
+        out.echo(f"deleted branch {branch}")
+    for db in result.dropped_databases:
+        out.echo(f"dropped database {db}")
+    out.success(f"removed worktree {name} ({result.removed_path})")
+
+
+worktree.add_command(remove, name="rm")

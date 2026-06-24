@@ -35,6 +35,11 @@ class WorktreeExists(OdooCliError):
     pass
 
 
+class WorktreeRemovalBlocked(OdooCliError):
+    """A removal was refused by a safety check (uncommitted changes, unmerged
+    branches, a live server, or linked dependents)."""
+
+
 class InvalidName(OdooCliError):
     """A worktree, repository, or database name breaks the shared name rules."""
 

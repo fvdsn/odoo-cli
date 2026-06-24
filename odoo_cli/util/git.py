@@ -166,6 +166,40 @@ class Git:
     def worktree_prune(self, repo: Path) -> None:
         self._runner.run(["git", "-C", repo, "worktree", "prune"])
 
+    def delete_branch(self, repo: Path, branch: str) -> None:
+        """Force-delete a local branch (`-D`); callers gate unmerged work."""
+        self._runner.run(["git", "-C", repo, "branch", "-D", branch])
+
+    def is_dirty(self, checkout: Path) -> bool:
+        """True when a working tree has uncommitted changes (tracked or not).
+        A path that is not a usable checkout reports clean: there is nothing
+        committed there to lose."""
+        result = self._runner.run(
+            ["git", "-C", checkout, "status", "--porcelain"], check=False
+        )
+        if result.returncode != 0:
+            return False
+        return bool(result.stdout.strip())
+
+    def tip_in_other_ref(self, repo: Path, branch: str) -> bool:
+        """Whether `branch`'s tip is reachable from some *other* ref in the
+        repo (another branch, or a mirrored upstream head). False means the
+        branch carries commits that exist nowhere else, so deleting it loses
+        them. A failed lookup is treated as 'nowhere else' (conservative)."""
+        result = self._runner.run(
+            [
+                "git", "-C", repo, "for-each-ref",
+                "--contains", f"refs/heads/{branch}", "--format=%(refname)",
+            ],
+            check=False,
+        )
+        if result.returncode != 0:
+            return False
+        own = f"refs/heads/{branch}"
+        return any(
+            line and line != own for line in result.stdout.splitlines()
+        )
+
     def worktree_paths(self, repo: Path) -> list[Path]:
         result = self._runner.run(["git", "-C", repo, "worktree", "list", "--porcelain"])
         paths = []
