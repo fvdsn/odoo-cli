@@ -1,0 +1,59 @@
+# Real WSL coverage for the install.sh fallback installer.
+#
+# The Docker e2e suite (tests/integration/test_install_script.py) reproduces the
+# *Linux* shape of WSL — systemd-less, WSL env markers, Windows PATH — but not
+# genuine Windows<->WSL interop (the Windows-supplied kernel, host networking,
+# drvfs). That can only run on a real Windows host, which is what this workflow
+# is for: it installs a WSL distro on a GitHub-hosted Windows runner and runs
+# the actual `install.sh` inside it.
+#
+# Best-effort and manual: GitHub's Windows runners run WSL1 (no kernel feature),
+# so some service/systemd behaviour differs from a developer's WSL2 box. Treat a
+# green run as "install.sh survives real WSL", and expect to tune as WSL on the
+# runners evolves. Triggered by hand (and optionally on a schedule) rather than
+# on every push, because it is slow and external-dependency heavy.
+
+name: WSL install.sh
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+jobs:
+  install-under-wsl:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up WSL (Ubuntu 24.04)
+        uses: Vampire/setup-wsl@v3
+        with:
+          distribution: Ubuntu-24.04
+          # the installer needs sudo; the action's default user is root, which
+          # satisfies install.sh's apt_prefix without a password prompt
+          additional-packages: sudo
+
+      - name: Run install.sh inside WSL
+        shell: wsl-bash {0}
+        run: |
+          set -euo pipefail
+          # confirm we really are under WSL before trusting the result
+          test -n "${WSL_DISTRO_NAME:-}" || { echo "not running under WSL"; exit 1; }
+          grep -qi microsoft /proc/version || { echo "kernel is not WSL"; exit 1; }
+          echo "WSL: $WSL_DISTRO_NAME / $(cat /proc/version)"
+          # the checkout lives on the Windows side; WSL reaches it under /mnt.
+          # The drive letter and `a/<repo>/<repo>` layout vary, so discover it
+          # rather than hardcode (GitHub uses D: today, but that has changed).
+          src=""
+          for candidate in /mnt/*/a/odoo-cli/odoo-cli; do
+            [ -f "$candidate/install.sh" ] && src="$candidate" && break
+          done
+          test -n "$src" || { echo "checkout not found under /mnt/*/a"; exit 1; }
+          echo "source: $src"
+          export ODOO_CLI_INSTALL_SOURCE="$src"
+          # deliver the script through a pipe, exactly as `curl ... | bash` does
+          cat "$src/install.sh" | bash | tee install.log
+          grep -q "Installed the odoo command at" install.log
+          grep -q "Workspace ready" install.log
