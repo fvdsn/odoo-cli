@@ -84,15 +84,40 @@ setup_linux() {
         $APT_PACKAGES || fail "apt-get install failed"
 }
 
+# Blobless clones (used by `odoo init`) are only reliable on git >= 2.40;
+# older git silently forces a full clone of Odoo, which is slow and
+# network-fragile. On macOS brew can provide a current git, so treat an old
+# git like a missing prerequisite (Apple's CLT git lags well behind 2.40).
+GIT_MIN_MINOR=40
+
+git_recent() {
+    command -v git >/dev/null 2>&1 || return 1
+    local version major minor
+    version=$(git --version 2>/dev/null | awk '{print $3}')
+    major=${version%%.*}
+    minor=${version#*.}
+    minor=${minor%%.*}
+    case "$major" in ''|*[!0-9]*) return 1 ;; esac
+    case "$minor" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$major" -gt 2 ] && return 0
+    [ "$major" -eq 2 ] && [ "$minor" -ge "$GIT_MIN_MINOR" ]
+}
+
 setup_macos() {
-    if find_python >/dev/null && command -v git >/dev/null 2>&1; then
-        return 0
-    fi
+    # Install only what is missing: a Python 3.10+ and a git new enough for
+    # blobless clones. A present-but-old git must still be upgraded, so this
+    # checks the version, not just `command -v git`.
+    local need=""
+    find_python >/dev/null || need="python"
+    git_recent || need="${need:+$need }git"
+    [ -z "$need" ] && return 0
     command -v brew >/dev/null 2>&1 \
-        || fail "Python 3.10+ is missing and Homebrew was not found;" \
-            "install it from https://brew.sh, then re-run"
-    say "Installing with Homebrew: python git"
-    brew install python git || fail "brew install failed"
+        || fail "Python 3.10+ or a recent git (>= 2.$GIT_MIN_MINOR) is missing" \
+            "and Homebrew was not found; install it from https://brew.sh," \
+            "then re-run"
+    say "Installing with Homebrew: $need"
+    # shellcheck disable=SC2086
+    brew install $need || fail "brew install failed"
 }
 
 # Fetch the latest wheel from PyPI, check its sha256, and unpack it (a wheel
