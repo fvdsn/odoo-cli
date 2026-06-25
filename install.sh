@@ -107,14 +107,19 @@ setup_macos() {
     # Install only what is missing: a Python 3.10+ and a git new enough for
     # blobless clones. A present-but-old git must still be upgraded, so this
     # checks the version, not just `command -v git`.
-    local need=""
-    find_python >/dev/null || need="python"
-    git_recent || need="${need:+$need }git"
+    local need="" missing=""
+    if ! find_python >/dev/null; then
+        need="python"
+        missing="Python 3.10+"
+    fi
+    if ! git_recent; then
+        need="${need:+$need }git"
+        missing="${missing:+$missing and }git >= 2.$GIT_MIN_MINOR"
+    fi
     [ -z "$need" ] && return 0
     command -v brew >/dev/null 2>&1 \
-        || fail "Python 3.10+ or a recent git (>= 2.$GIT_MIN_MINOR) is missing" \
-            "and Homebrew was not found; install it from https://brew.sh," \
-            "then re-run"
+        || fail "missing $missing, and Homebrew was not found;" \
+            "install Homebrew from https://brew.sh, then re-run"
     say "Installing with Homebrew: $need"
     # shellcheck disable=SC2086
     brew install $need || fail "brew install failed"
