@@ -1,6 +1,6 @@
 """Database lifecycle.
 
-Rule (docs/requirements.md): any command that needs an initialized database
+Rule (specs/requirements.md): any command that needs an initialized database
 calls `ensure_initialized` — a missing target database is created and
 initialized empty (base only, no modules) before the command proceeds.
 Installed modules are read from the database; there is no configured list.

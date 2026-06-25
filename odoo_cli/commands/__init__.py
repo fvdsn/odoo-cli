@@ -2,7 +2,7 @@
 
 Command modules parse CLI arguments and call core services; they never build
 odoo-bin argv, touch odoo.conf, inspect .run/, infer addons paths, or call
-sys.exit (docs/architecture.md → "CLI command shape").
+sys.exit (specs/architecture.md → "CLI command shape").
 """
 
 from __future__ import annotations

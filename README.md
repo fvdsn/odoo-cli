@@ -4,7 +4,7 @@ A CLI tool to manage and develop local Odoo instances: one workspace, git
 worktrees for multitasking across versions, shared venvs, derived database
 names, and automatic port allocation — with the filesystem, the database, and
 `odoo/odoo/release.py` as the only sources of truth. The full design lives in
-[`docs/`](docs/) (`requirements.md`, `architecture.md`, `usecase.md`).
+[`specs/`](specs/) (`requirements.md`, `architecture.md`, `usecase.md`).
 
 ## Install
 
@@ -66,4 +66,4 @@ ODOO_CLI_DOCKER_E2E=1 \
 ```
 
 Architecture, layering rules, and the testing strategy are documented in
-[`docs/architecture.md`](docs/architecture.md).
+[`specs/architecture.md`](specs/architecture.md).

@@ -1,6 +1,6 @@
 """Run-state store and server lifecycle (v1: foreground only).
 
-Port rules (docs/requirements.md → "Port management"): ports are stable per
+Port rules (specs/requirements.md → "Port management"): ports are stable per
 (worktree, db) via `.run/{worktree}/{db}/ports`, never reassigned silently.
 Allocation picks the smallest free port >= base, http and gevent share one
 reservation pool, availability is verified by binding, the reservation is

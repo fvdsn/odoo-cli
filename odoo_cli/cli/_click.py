@@ -5,7 +5,7 @@ unvendor click (e.g. Debian, depending on python3-click) only need the
 vendored copy removed; the fallback import below picks up the system click.
 
 Core modules must not import this module (or click at all); see
-docs/architecture.md.
+specs/architecture.md.
 """
 
 try:

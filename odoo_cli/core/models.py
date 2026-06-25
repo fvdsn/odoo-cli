@@ -1,4 +1,4 @@
-"""Core value objects (docs/architecture.md → "Core data model").
+"""Core value objects (specs/architecture.md → "Core data model").
 
 Dataclasses carried across services. They hold paths and derived facts, no
 behavior beyond cheap filesystem reads (symlink targets); heavy work lives in

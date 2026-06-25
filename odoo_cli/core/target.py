@@ -1,6 +1,6 @@
 """Target resolution: which (workspace, worktree, database) a command acts on.
 
-Resolution order (docs/requirements.md → "Target resolution order"):
+Resolution order (specs/requirements.md → "Target resolution order"):
 worktree: explicit --worktree -> cwd inside a worktree -> `-d` hint
           -> only worktree -> error
 database: explicit --db -> `{worktree}`

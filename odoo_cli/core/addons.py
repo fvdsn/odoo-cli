@@ -1,7 +1,7 @@
 """Deterministic addons-path resolution from the worktree layout.
 
 There is no `addons = [...]` list anywhere: this only reads the filesystem.
-Order (docs/requirements.md): `odoo/addons`, `themes` if present, `enterprise`
+Order (specs/requirements.md): `odoo/addons`, `themes` if present, `enterprise`
 if present, then custom addon paths sorted alphabetically. Duplicate module
 names across paths are left to odoo-bin's own resolution rules.
 """

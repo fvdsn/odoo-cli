@@ -1,7 +1,7 @@
 """The only owner of odoo-bin CLI details.
 
 Every odoo-bin invocation is built here as an OdooBinCommand. Rules
-(docs/requirements.md → "Configuration via odoo.conf"):
+(specs/requirements.md → "Configuration via odoo.conf"):
 
 - always pass `-c <shared odoo.conf>` explicitly, never rely on rcfile
   resolution (~/.odoorc, ODOO_RC)
@@ -13,7 +13,7 @@ Every odoo-bin invocation is built here as an OdooBinCommand. Rules
 
 Version-dependent behavior lives in the capability table, which is also the
 future delegation mechanism when odoo-bin adopts these conventions itself
-(docs/requirements_v3.md → "Convention migration into odoo-bin").
+(specs/requirements_v3.md → "Convention migration into odoo-bin").
 """
 
 from __future__ import annotations
