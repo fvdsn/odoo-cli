@@ -152,7 +152,7 @@ def _setup_agent_context(
     """Write the workspace AGENTS.md files and install skills for any installed
     harness. Best-effort: agent setup never fails `odoo init`."""
     try:
-        agent_assets.write_workspace_docs(workspace)
+        agent_assets.write_workspace_docs(workspace, env=services.env)
         agent_assets.write_worktree_docs(worktree)
         result = agent_assets.install_skills(env=services.env)
     except OSError as exc:

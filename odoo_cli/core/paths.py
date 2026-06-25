@@ -41,9 +41,10 @@ def odoo_conf_path(env: Mapping[str, str] | None = None) -> Path:
     return _config_home(env) / "odoo" / "odoo.conf"
 
 
-# Agent-harness directories, used to install skills only for installed harnesses
-# (see specs/agentic_context.md). The config dirs are presence markers; the
-# skills dirs are where skills are copied.
+# Agent-harness directories (see specs/agentic_context.md). `~/.agents/skills`
+# is the shared AGENTS.md-convention skill dir (Codex, opencode, Copilot CLI,
+# and VS Code Copilot all read it) and is always written; the Claude dirs are
+# used only when Claude itself is detected. The config dirs are presence markers.
 
 
 def claude_dir(env: Mapping[str, str] | None = None) -> Path:
@@ -51,14 +52,22 @@ def claude_dir(env: Mapping[str, str] | None = None) -> Path:
     return _home(env) / ".claude"
 
 
-def codex_dir(env: Mapping[str, str] | None = None) -> Path:
+def claude_desktop_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
+    """Config dirs of the Claude **desktop** app, used only as a presence
+    signal. The desktop app hosts Claude Code (which reads `~/.claude/skills`
+    and `CLAUDE.md`), so it justifies the Claude-only assets even when the
+    `claude` CLI is absent from PATH. Paths are platform-specific; one that does
+    not apply to the current OS simply never exists.
+    """
     env = os.environ if env is None else env
-    return _home(env) / ".codex"
-
-
-def opencode_dir(env: Mapping[str, str] | None = None) -> Path:
-    env = os.environ if env is None else env
-    return _config_home(env) / "opencode"
+    dirs = [
+        _home(env) / "Library" / "Application Support" / "Claude",  # macOS
+        _config_home(env) / "Claude",  # Linux (honors XDG_CONFIG_HOME)
+    ]
+    appdata = env.get("APPDATA")
+    if appdata:
+        dirs.append(Path(appdata) / "Claude")  # Windows
+    return dirs
 
 
 def claude_skills_dir(env: Mapping[str, str] | None = None) -> Path:
@@ -66,6 +75,7 @@ def claude_skills_dir(env: Mapping[str, str] | None = None) -> Path:
 
 
 def agents_skills_dir(env: Mapping[str, str] | None = None) -> Path:
-    """`~/.agents/skills` — read by both Codex and opencode."""
+    """`~/.agents/skills` — the shared AGENTS.md-convention skill dir, read by
+    Codex, opencode, Copilot CLI, and VS Code Copilot."""
     env = os.environ if env is None else env
     return _home(env) / ".agents" / "skills"

@@ -41,16 +41,26 @@ def _assets():
 # --- workspace docs (create-once, user-owned) -------------------------------
 
 
-def write_workspace_docs(workspace: Workspace) -> list[Path]:
-    """Create the root `AGENTS.md` (+ `CLAUDE.md` symlink) if absent. An
-    existing non-empty file of either name is left untouched."""
+def write_workspace_docs(
+    workspace: Workspace,
+    env: Mapping[str, str] | None = None,
+    which: WhichFn = shutil.which,
+) -> list[Path]:
+    """Create the root `AGENTS.md` if absent (always), plus a `CLAUDE.md ->
+    AGENTS.md` symlink when Claude is detected. An existing non-empty file of
+    either name is left untouched."""
+    env = os.environ if env is None else env
     written: list[Path] = []
     agents = workspace.root / "AGENTS.md"
     if _doc_needs_template(agents):
         _write_text(agents, (_assets() / "AGENTS.md").read_text(encoding="utf-8"))
         written.append(agents)
     claude = workspace.root / "CLAUDE.md"
-    if not claude.exists() and not claude.is_symlink():
+    if (
+        _claude_present(env, which)
+        and not claude.exists()
+        and not claude.is_symlink()
+    ):
         os.symlink("AGENTS.md", claude)
         written.append(claude)
     return written
@@ -174,18 +184,21 @@ def _subdirs(path: Path) -> list[Path]:
 
 
 def _skill_dirs(env: Mapping[str, str], which: WhichFn) -> set[Path]:
-    """Detected harness skill dirs: `~/.claude/skills` if Claude is present;
-    `~/.agents/skills` if Codex or opencode is present (opencode reads it too).
-    """
-    dirs: set[Path] = set()
-    if _present("claude", paths.claude_dir(env), which):
+    """`~/.agents/skills` always — the shared AGENTS.md-convention dir read by
+    Codex, opencode, Copilot CLI, and VS Code Copilot; `~/.claude/skills` only
+    when Claude is detected."""
+    dirs: set[Path] = {paths.agents_skills_dir(env)}
+    if _claude_present(env, which):
         dirs.add(paths.claude_skills_dir(env))
-    if _present("codex", paths.codex_dir(env), which) or _present(
-        "opencode", paths.opencode_dir(env), which
-    ):
-        dirs.add(paths.agents_skills_dir(env))
     return dirs
 
 
-def _present(cli: str, config_dir: Path, which: WhichFn) -> bool:
-    return which(cli) is not None or config_dir.is_dir()
+def _claude_present(env: Mapping[str, str], which: WhichFn) -> bool:
+    """Claude Code is available: the `claude` CLI on PATH, its `~/.claude`
+    config dir, or a Claude **desktop** app config dir (the desktop app hosts
+    Claude Code, which reads the same `~/.claude/skills` and `CLAUDE.md`)."""
+    if which("claude") is not None:
+        return True
+    if paths.claude_dir(env).is_dir():
+        return True
+    return any(d.is_dir() for d in paths.claude_desktop_dirs(env))

@@ -1,9 +1,15 @@
 # Odoo CLI — Agentic context engineering
 
 This spec describes how `odoo-cli` sets up *agentic context* so that AI coding
-agents — Claude Code, Codex, opencode — understand the workspaces it manages
-(e.g. `~/odoo`) and can run useful task workflows in them. GitHub Copilot is a
-deliberate later addition (see Non-goals).
+agents — Claude Code, Codex, opencode, and GitHub Copilot (Copilot CLI, VS Code
+Copilot, and the cloud coding agent) — understand the workspaces it manages
+(e.g. `~/odoo`) and can run useful task workflows in them.
+
+All of these harnesses read the `AGENTS.md` convention and the shared
+`~/.agents/skills` skill dir, so the workspace `AGENTS.md` files and that skill
+dir are written **unconditionally**. The Claude-specific artifacts (`CLAUDE.md`
+and `~/.claude/skills`) are written **only when Claude is detected**. See
+"Always-on vs Claude-only" below.
 
 It fleshes out the v2 line item in `requirements_v2.md` → "Agent context
 generation". `requirements.md`, `usecase.md`, and `architecture.md` are the
@@ -33,12 +39,16 @@ not part of the CLI's own repo.
 
 - A bespoke per-agent configuration system. We use each harness's documented
   files and nothing more.
-- GitHub Copilot support, for now. Copilot is deferred entirely — no
-  `.github/copilot-instructions.md` and no skills (it has no skill primitive
-  anyway). It can be added later: the always-on file is a cheap
-  `.github/copilot-instructions.md -> AGENTS.md` symlink, and skills would need a
-  prompt/instruction-file transform. The harness reference below keeps the
-  Copilot facts on record for that work.
+- Copilot-specific files. GitHub Copilot is supported through the shared
+  `AGENTS.md` + `~/.agents/skills` it already reads — we add **no**
+  `.github/copilot-instructions.md` and no Copilot-only skill location. Copilot
+  CLI and the cloud coding agent read root/nested `AGENTS.md` by default; VS Code
+  in-editor auto-detects the root `AGENTS.md` too (toggle `chat.useAgentsMdFile`).
+  We deliberately do not generate `.github/copilot-instructions.md` — keeping the
+  workspace free of per-tool files. Skills: Copilot CLI and VS Code Copilot both
+  discover
+  `~/.agents/skills` (alongside `~/.claude/skills`), so the bundled skills are
+  picked up with no new location.
 - A separate skills repository / distribution mechanism, for now. All skills are
   bundled in the `odoo-cli` package (see "Bundled in the tool"). This is revisited
   only when the skill set outgrows the package.
@@ -105,13 +115,17 @@ Rules:
 
 ```text
 ~/odoo/
-    AGENTS.md                 <- the real file (Codex, opencode read it natively)
-    CLAUDE.md -> AGENTS.md     <- Claude Code
+    AGENTS.md                 <- the real file (Codex, opencode, Copilot read it)
+    CLAUDE.md -> AGENTS.md     <- Claude Code (only when Claude is detected)
 ```
 
-- **Codex** and **opencode** read `AGENTS.md` natively; no extra file.
-- **Claude Code** reads `CLAUDE.md` (symlink).
-- **Copilot** (deferred) would add `.github/copilot-instructions.md -> AGENTS.md`.
+- **Codex**, **opencode**, **Copilot CLI**, and the **Copilot cloud coding
+  agent** read `AGENTS.md` natively; no extra file. **VS Code Copilot**
+  auto-detects the root `AGENTS.md` (toggle `chat.useAgentsMdFile`).
+- **Claude Code** reads `CLAUDE.md` (symlink), written **only when Claude is
+  detected** (see "Always-on vs Claude-only").
+- We add **no** Copilot-specific file: `AGENTS.md` already covers every Copilot
+  surface, so there is no `.github/copilot-instructions.md`.
 
 ### Slim orientation that points at the skill
 
@@ -234,37 +248,50 @@ workspace. This solves a real discovery problem:
   workspace-level skills fall out of range for Codex/opencode. Global install
   avoids this entirely and keeps the workspace free of skill files and symlinks.
 
-Skills go into **two** global dirs. opencode reads the home-level dirs of both
-other harnesses (verified), so it needs no location of its own — every harness
-discovers skills **one level deep** (`<dir>/<name>/SKILL.md`), so each skill is a
-direct child, named `odoo-*` to namespace it and avoid collisions with the user's
-own skills:
+Skills go into **two** global dirs. Every harness discovers skills **one level
+deep** (`<dir>/<name>/SKILL.md`), so each skill is a direct child, named `odoo-*`
+to namespace it and avoid collisions with the user's own skills:
 
-| Global skill dir | Read by | Installed when present |
+| Global skill dir | Read by | Installed |
 |---|---|---|
-| `~/.claude/skills/` | Claude Code, opencode | Claude Code |
-| `~/.agents/skills/` | Codex, opencode | Codex **or** opencode |
+| `~/.agents/skills/` | Codex, opencode, Copilot CLI, VS Code Copilot | **always** |
+| `~/.claude/skills/` | Claude Code, opencode, VS Code Copilot | only when Claude is detected |
 
-(opencode also reads `~/.config/opencode/skills/`, but since it reads both dirs
-above we write no separate opencode location.)
+`~/.agents/skills` is the shared AGENTS.md-convention dir that every non-Claude
+harness reads, so it is written unconditionally — no per-tool probe. opencode and
+VS Code Copilot read *both* dirs (verified), so neither needs a location of its
+own. (opencode also reads `~/.config/opencode/skills/`, and Copilot CLI also
+reads `~/.copilot/skills/`, but since they read the two dirs above we write no
+separate location for either.)
 
-So an install creates e.g. `~/.claude/skills/odoo-review/SKILL.md`,
-`~/.agents/skills/odoo-review/SKILL.md`, … The directory name becomes the
-invocation name (`/odoo-review`).
+So an install always creates `~/.agents/skills/odoo-review/SKILL.md`, … and
+`~/.claude/skills/odoo-review/SKILL.md`, … additionally when Claude is detected.
+The directory name becomes the invocation name (`/odoo-review`).
 
-### Only for installed harnesses
+### Always-on vs Claude-only
 
-`odoo-cli` writes a global skill dir **only if a harness that reads it is
-present** — detected by its CLI being on `PATH` (`claude`, `codex`, `opencode`)
-or its config dir already existing (`~/.claude`, `~/.codex`,
-`~/.config/opencode`). Concretely: `~/.claude/skills` is written if Claude is
-present; `~/.agents/skills` is written if Codex **or** opencode is present (so an
-opencode-only user is still covered). It creates the `skills/` dir if missing and
-copies the skills in; for a dir no present harness reads it does **nothing** — it
-never creates `~/.claude` & co. for a tool the user does not use.
+The split is deliberate:
 
-Detection is at install time, so the refresh step (below) also picks up any
-harness that appeared since `odoo init`.
+- **Always written:** the workspace `AGENTS.md` files (root + per worktree) and
+  `~/.agents/skills`. The `AGENTS.md` convention is read by every harness we
+  target (and is a harmless, ignorable file for any that don't), and
+  `~/.agents/skills` is the neutral cross-tool skill dir — not owned by any one
+  tool — so there is no tool to "detect" for it. Writing them unconditionally
+  keeps setup predictable and future-proofs any new AGENTS.md harness.
+- **Claude-only, detected:** `CLAUDE.md` (the workspace symlink) and
+  `~/.claude/skills`. These are Claude Code's own files, so we write them only
+  when Claude is present, rather than littering `~/.claude` for a tool the user
+  does not use.
+
+**Claude detection** — `claude` on `PATH`, the `~/.claude` config dir, or a
+Claude **desktop** app config dir (`~/Library/Application Support/Claude` on
+macOS, `~/.config/Claude` on Linux, `%APPDATA%/Claude` on Windows). The desktop
+app hosts Claude Code, which reads the same `~/.claude/skills` and `CLAUDE.md`,
+so its presence counts even when the `claude` CLI is absent from `PATH`.
+
+Detection is at install time, so the refresh step (below) picks up Claude if it
+appeared since `odoo init` — adding `CLAUDE.md` and `~/.claude/skills` on the
+next run.
 
 ### Bundled in the tool
 
@@ -315,11 +342,11 @@ distribution mechanism emerges (see Future work).
   not just Odoo ones. Acceptable for domain-scoped skills: the `description`
   frontmatter scopes auto-invocation ("for Odoo codebases…"), and the `odoo-*`
   names avoid collisions.
-- **Writes into home dirs** — installing means `odoo-cli` writes under
-  `~/.claude` and `~/.agents`, but **only for harnesses that are actually
-  installed** (see "Only for installed harnesses"). Consistent with
-  it already owning `~/.config/odoo/odoo.conf`, and it must be idempotent and
-  cleanly removable (drop only marker-bearing folders).
+- **Writes into home dirs** — installing always writes under `~/.agents` (the
+  neutral cross-tool dir) and additionally under `~/.claude` **only when Claude
+  is detected** (see "Always-on vs Claude-only"). Consistent with it already
+  owning `~/.config/odoo/odoo.conf`, and it must be idempotent and cleanly
+  removable (drop only marker-bearing folders).
 
 ## Harness reference (researched)
 
@@ -330,11 +357,15 @@ Recorded so implementation does not need to re-derive it.
 | Claude Code | `CLAUDE.md` (→`AGENTS.md`); walks up to `$HOME` | `~/.claude/skills/` | one level; metadata preloaded into system prompt; follows symlinks |
 | Codex | `AGENTS.md`; searched only within a git project root | `~/.agents/skills/` | one level; follows symlinked skill folders; no git root ⇒ only cwd |
 | opencode | `AGENTS.md`; up to git worktree root | reads home-level `~/.claude/skills`, `~/.agents/skills`, `~/.config/opencode/skills` → covered by `~/.agents/skills` | one level; bounded by git worktree root |
-| Copilot *(deferred)* | `.github/copilot-instructions.md` | — (no skill primitive) | — |
+| Copilot CLI | `AGENTS.md` (root + cwd) by default; also `.github/copilot-instructions.md`, `CLAUDE.md`, `$HOME/.copilot/copilot-instructions.md` | reads `~/.agents/skills` and `~/.copilot/skills` → covered by `~/.agents/skills` | one level; searches repo root + cwd (`COPILOT_CUSTOM_INSTRUCTIONS_DIRS` adds more) |
+| VS Code Copilot | `.github/copilot-instructions.md` (default-on); `AGENTS.md` auto-detected at root (toggle `chat.useAgentsMdFile`; nested = experimental `chat.useNestedAgentsMdFiles`) | reads `~/.agents/skills`, `~/.claude/skills`, `~/.copilot/skills` → covered | one level; workspace-root only; skills enabled by default |
+| Copilot cloud coding agent | `AGENTS.md` (root + nested) by default; `.github/copilot-instructions.md`, `.github/instructions/**`, `CLAUDE.md`, `GEMINI.md` | in-repo `.github/skills/` (no global dir) | — |
 
 Sources: Claude Code memory, skills (+ best practices) & plugin-marketplace docs;
 openai/codex AGENTS.md, skills & plugins docs, and #6038; opencode rules & skills
-docs and #2225; GitHub Copilot custom-instructions docs.
+docs and #2225; GitHub Copilot custom-instructions docs (VS Code
+`agent-customization` docs, Copilot CLI & cloud-agent docs); GitHub "Copilot now
+supports Agent Skills" changelog (2025-12-18).
 
 ## Implementation sketch
 
@@ -365,21 +396,23 @@ command (as in `commands/init.py`).
   the data dir it sources from (no import clash; different package):
 
 ```python
-def write_workspace_docs(workspace) -> list[Path]:
-    # root AGENTS.md from template if absent; + CLAUDE.md -> AGENTS.md if absent
+def write_workspace_docs(workspace, env=None, which=shutil.which) -> list[Path]:
+    # root AGENTS.md from template if absent (always);
+    # + CLAUDE.md -> AGENTS.md if absent AND Claude is detected
 def write_worktree_docs(worktree) -> list[Path]:
     # thin AGENTS.md if absent (no CLAUDE.md symlink — Claude climbs to the root)
 
 def install_skills(env=None, which=shutil.which) -> list[Path]:
-    # into each detected dir: copy bundled skills + stamp <skill>/.installed-by-odoo-cli;
+    # into each target dir: copy bundled skills + stamp <skill>/.installed-by-odoo-cli;
     # prune marker-bearing folders no longer bundled; skip+warn on a marker-less
     # name collision. Idempotent, so it is also the sync path.
 def uninstall_skills(env=None, which=shutil.which) -> list[Path]:
-    # remove only marker-bearing folders from the detected dirs
+    # remove only marker-bearing folders from the target dirs
 
 def _skill_dirs(env, which) -> set[Path]:
-    # ~/.claude/skills if claude present; ~/.agents/skills if codex or opencode present
-    # present(h) = which(h.cli) is not None or h.config_dir.is_dir()
+    # ~/.agents/skills always; ~/.claude/skills only if _claude_present
+def _claude_present(env, which) -> bool:
+    # which("claude") or ~/.claude is a dir or a Claude desktop config dir exists
 ```
 
 Primitives: write-if-absent is `path.exists()`; copying a skill folder is the
@@ -432,7 +465,9 @@ recursive-copy helper is exercised against the real bundled resources so the
 
 ## Out of scope (for now)
 
-- GitHub Copilot support (see Non-goals).
+- Copilot-specific files (`.github/copilot-instructions.md`, a Copilot-only skill
+  dir). Copilot is covered through the shared `AGENTS.md` + `~/.agents/skills`;
+  see Non-goals.
 - MCP frontend (`requirements_v3.md` → "MCP frontend") — a separate, richer
   integration path; this spec is only about file-based agent context.
 - Generating agent context for the `odoo-cli` source repo itself (it already has

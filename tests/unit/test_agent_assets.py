@@ -35,23 +35,42 @@ class TestWorkspaceDocs(AgentAssetsTestCase):
     def _workspace(self) -> Workspace:
         return Workspace(root=make_workspace(self.home), config=None)
 
-    def test_writes_agents_md_and_claude_symlink(self):
+    def write(self, ws, which=which_none):
+        return agent_assets.write_workspace_docs(ws, env=self.env, which=which)
+
+    def test_writes_agents_md_without_claude_symlink_by_default(self):
         ws = self._workspace()
-        written = agent_assets.write_workspace_docs(ws)
+        written = self.write(ws)  # no Claude detected
+
+        agents = ws.root / "AGENTS.md"
+        self.assertTrue(agents.is_file())
+        self.assertIn(agents, written)
+        self.assertFalse((ws.root / "CLAUDE.md").exists())
+
+    def test_claude_symlink_only_when_claude_present(self):
+        ws = self._workspace()
+        written = self.write(ws, which=which_only("claude"))
 
         agents = ws.root / "AGENTS.md"
         claude = ws.root / "CLAUDE.md"
-        self.assertTrue(agents.is_file())
-        self.assertIn(agents, written)
         self.assertTrue(claude.is_symlink())
         self.assertEqual(os.readlink(claude), "AGENTS.md")
         self.assertEqual(claude.read_text(), agents.read_text())
+        self.assertIn(claude, written)
+
+    def test_claude_desktop_app_triggers_symlink(self):
+        (self.home / "Library" / "Application Support" / "Claude").mkdir(parents=True)
+        ws = self._workspace()
+
+        self.write(ws)  # no `claude` CLI, but the desktop app is present
+
+        self.assertTrue((ws.root / "CLAUDE.md").is_symlink())
 
     def test_create_once_leaves_existing_untouched(self):
         ws = self._workspace()
         (ws.root / "AGENTS.md").write_text("my notes\n")
 
-        written = agent_assets.write_workspace_docs(ws)
+        written = self.write(ws)
 
         self.assertEqual((ws.root / "AGENTS.md").read_text(), "my notes\n")
         self.assertNotIn(ws.root / "AGENTS.md", written)
@@ -60,16 +79,16 @@ class TestWorkspaceDocs(AgentAssetsTestCase):
         ws = self._workspace()
         (ws.root / "AGENTS.md").write_text("")
 
-        written = agent_assets.write_workspace_docs(ws)
+        written = self.write(ws)
 
         self.assertIn(ws.root / "AGENTS.md", written)
         self.assertIn("Odoo development workspace", (ws.root / "AGENTS.md").read_text())
 
     def test_idempotent(self):
         ws = self._workspace()
-        agent_assets.write_workspace_docs(ws)
+        self.write(ws, which=which_only("claude"))
         # a second run writes nothing and does not raise on the existing symlink
-        self.assertEqual(agent_assets.write_workspace_docs(ws), [])
+        self.assertEqual(self.write(ws, which=which_only("claude")), [])
 
 
 class TestWorktreeDocs(AgentAssetsTestCase):
@@ -105,27 +124,37 @@ class TestSkillDirs(AgentAssetsTestCase):
     def dirs(self, which):
         return agent_assets._skill_dirs(self.env, which)
 
-    def test_none_present(self):
-        self.assertEqual(self.dirs(which_none), set())
+    def test_agents_dir_always_present(self):
+        # no harness at all: the shared AGENTS.md dir is still written
+        self.assertEqual(self.dirs(which_none), {self.agents_skills})
 
-    def test_claude_only(self):
-        self.assertEqual(self.dirs(which_only("claude")), {self.claude_skills})
-
-    def test_codex_only(self):
+    def test_codex_or_opencode_is_still_just_agents(self):
         self.assertEqual(self.dirs(which_only("codex")), {self.agents_skills})
-
-    def test_opencode_only(self):
         self.assertEqual(self.dirs(which_only("opencode")), {self.agents_skills})
 
-    def test_all_present(self):
+    def test_claude_cli_adds_claude_dir(self):
         self.assertEqual(
-            self.dirs(which_only("claude", "codex", "opencode")),
-            {self.claude_skills, self.agents_skills},
+            self.dirs(which_only("claude")),
+            {self.agents_skills, self.claude_skills},
         )
 
-    def test_config_dir_counts_as_present(self):
-        (self.home / ".codex").mkdir(parents=True)
-        self.assertEqual(self.dirs(which_none), {self.agents_skills})
+    def test_claude_config_dir_adds_claude_dir(self):
+        (self.home / ".claude").mkdir(parents=True)
+        self.assertEqual(
+            self.dirs(which_none), {self.agents_skills, self.claude_skills}
+        )
+
+    def test_claude_desktop_macos_adds_claude_dir(self):
+        (self.home / "Library" / "Application Support" / "Claude").mkdir(parents=True)
+        self.assertEqual(
+            self.dirs(which_none), {self.agents_skills, self.claude_skills}
+        )
+
+    def test_claude_desktop_linux_adds_claude_dir(self):
+        (self.home / ".config" / "Claude").mkdir(parents=True)
+        self.assertEqual(
+            self.dirs(which_none), {self.agents_skills, self.claude_skills}
+        )
 
 
 # --- skill install / sync / uninstall ---------------------------------------
@@ -144,14 +173,15 @@ class TestSkills(AgentAssetsTestCase):
         self.assertTrue((review / "SKILL.md").is_file())
         self.assertTrue((review / MARKER).is_file())
         self.assertIn(review, result.installed)
-        # only the detected harness dir is written
-        self.assertFalse(self.agents_skills.exists())
+        # the shared ~/.agents/skills dir is always written too
+        self.assertTrue((self.agents_skills / "odoo-review" / "SKILL.md").is_file())
 
-    def test_nothing_installed_when_no_harness(self):
+    def test_agents_skills_installed_without_any_harness(self):
         result = self.install(which=which_none)
-        self.assertEqual(result.installed, [])
+        self.assertTrue((self.agents_skills / "odoo-cli" / "SKILL.md").is_file())
+        self.assertIn(self.agents_skills / "odoo-cli", result.installed)
+        # no Claude detected: the Claude dir is left alone
         self.assertFalse(self.claude_skills.exists())
-        self.assertFalse(self.agents_skills.exists())
 
     def test_idempotent_resync(self):
         self.install()
