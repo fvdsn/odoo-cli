@@ -209,3 +209,20 @@ class TestMacosInstallScript(unittest.TestCase):
         self.assertEqual(rc, 0, output)
         self.assertIn("Installed the odoo command at", output)
         self.assertIn("Workspace ready", output)
+
+        # a brand-new login shell (a fresh Terminal window), with NO manual PATH
+        # edit: does a normal macOS user get `odoo` on PATH automatically? macOS
+        # has no Debian-style ~/.local/bin auto-add, so this is the real question.
+        check = (
+            "if command -v odoo >/dev/null 2>&1; then "
+            'echo "BARE_ODOO: WORKS -> $(odoo --version)"; '
+            "else echo BARE_ODOO: NOT-ON-PATH; fi"
+        )
+        _, bare = self._ssh(ip, f"zsh -lc '{check}'", check=False)
+        bare_line = next(
+            (ln for ln in bare.splitlines() if "BARE_ODOO" in ln), "BARE_ODOO: ?"
+        )
+        print(f"\n[macos install e2e] {bare_line}\n")
+        # install.sh must make `odoo` resolve in a fresh macOS login shell with no
+        # manual step (it appends the PATH export to ~/.zprofile)
+        self.assertIn("BARE_ODOO: WORKS", bare)
