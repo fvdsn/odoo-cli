@@ -76,10 +76,18 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
         for name in DEFAULT_REPOS
     ):
         # keyed on the effective mode: old git falls back to full clones
-        duration = "a few minutes" if clone_mode == "blobless" else "an hour"
+        is_blobless = clone_mode == "blobless"
+        duration = "about 2 minutes" if is_blobless else "about an hour"
         out.echo(
             f"Downloading the Odoo sources to {root}, this can take {duration}..."
         )
+        # only nag when the slowdown is fixable: an old git forced full clones.
+        # An explicit --full is the user's choice, so stay quiet.
+        if not full and not is_blobless:
+            out.echo(
+                "   Tip: upgrade git to >= 2.40 for blobless clones — "
+                "about 2 minutes instead of an hour."
+            )
     for name in DEFAULT_REPOS:
         if services.repositories.is_corrupt(bootstrap, name):
             action = "Recloning (incomplete)"

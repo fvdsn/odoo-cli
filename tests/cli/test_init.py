@@ -97,7 +97,9 @@ class TestInit(InitCommandTestCase):
         # blobless clone by default
         clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertIn("--filter=blob:none", clone)
-        self.assertIn("this can take a few minutes", result.output)
+        self.assertIn("this can take about 2 minutes", result.output)
+        # blobless is already the fast path: no git-upgrade nag
+        self.assertNotIn("upgrade git", result.output)
         # the download message names the destination workspace dir
         self.assertIn(f"Downloading the Odoo sources to {self.root}", result.output)
 
@@ -113,7 +115,9 @@ class TestInit(InitCommandTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertNotIn("--filter=blob:none", clone)
-        self.assertIn("this can take an hour", result.output)
+        self.assertIn("this can take about an hour", result.output)
+        # --full is the user's deliberate choice, so don't nag about git
+        self.assertNotIn("upgrade git", result.output)
 
     def test_old_git_falls_back_to_full_clone_and_says_so(self):
         self.script_happy_path()
@@ -124,7 +128,9 @@ class TestInit(InitCommandTestCase):
         clone = next(c for c in self.runner.calls if c[:2] == ("git", "clone"))
         self.assertNotIn("--filter=blob:none", clone)
         self.assertIn("unreliable blobless clones", result.output)
-        self.assertIn("this can take an hour", result.output)
+        self.assertIn("this can take about an hour", result.output)
+        # old git is the fixable cause: advise upgrading for blobless speed
+        self.assertIn("upgrade git to >= 2.40", result.output)
 
     def test_no_demo_data_flag(self):
         self.script_happy_path()
