@@ -210,6 +210,16 @@ main() {
     local python
     python=$(find_python) \
         || fail "Python 3.10+ is still not available after installation"
+    # find_python may return a wrapper, not the interpreter itself: pyenv/asdf
+    # expose a shim that is a shell script. The kernel honors only one level of
+    # shebang, so a shim in the launcher's `#!` line is treated as a script
+    # interpreter, fails with ENOEXEC, and the launcher gets run by /bin/sh.
+    # sys.executable is the real interpreter binary, which is always shebang-safe.
+    local real_python
+    real_python=$("$python" -c 'import sys; print(sys.executable)' 2>/dev/null)
+    if [ -n "$real_python" ] && [ -x "$real_python" ]; then
+        python=$real_python
+    fi
     say "Using $python ($("$python" --version 2>&1))"
 
     rm -rf "$LIB_DIR"
