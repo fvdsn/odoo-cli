@@ -162,10 +162,18 @@ def _setup_agent_context(
     try:
         agent_assets.write_workspace_docs(workspace, env=services.env)
         agent_assets.write_worktree_docs(worktree)
-        result = agent_assets.install_skills(env=services.env)
+        result = agent_assets.install_skills(workspace.root, env=services.env)
+        # older versions installed skills globally under ~; clean those up so
+        # they stop biasing the user's non-Odoo sessions
+        legacy = agent_assets.prune_legacy_global_skills(env=services.env)
     except OSError as exc:
         out.warn(f"could not set up agent context: {exc}")
         return
+    if legacy:
+        out.echo(
+            f"Removed {len(legacy)} odoo-cli skill(s) from the global skill dirs "
+            "(now installed in the workspace)"
+        )
     for dest in result.skipped:
         out.warn(
             f"kept existing skill '{dest.name}' in {dest.parent} "

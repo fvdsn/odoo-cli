@@ -1,4 +1,4 @@
-"""Agentic context setup: workspace AGENTS.md files and global skill install.
+"""Agentic context setup: workspace AGENTS.md files and workspace-local skills.
 
 Plain functions over the markdown shipped under `odoo_cli/agent_assets/` (the
 data dir this module is named after). See `specs/agentic_context.md`.
@@ -6,7 +6,14 @@ data dir this module is named after). See `specs/agentic_context.md`.
 Two artifacts, two lifecycles:
 
 - workspace `AGENTS.md` / `CLAUDE.md` — written create-once, then user-owned;
-- skills — copied into the harnesses' global skill dirs (tool-owned, refreshed).
+- skills — copied into the workspace's own skill dirs (tool-owned, refreshed).
+
+Skills install **into the workspace**, not the user's global skill dirs, so they
+never bias unrelated (non-Odoo) sessions — a harness preloads every skill's
+name+description, so a global install leaks Odoo context everywhere. The cost is
+discovery scope: harnesses bound skill search at the git repo root, and a
+worktree root is not a git repo, so a harness started there does not auto-load
+them (the per-worktree AGENTS.md points at the skill file as a fallback).
 
 Best-effort by contract: callers wrap these in a guard and warn on failure, so
 agent setup never fails the host command.
@@ -24,8 +31,8 @@ from pathlib import Path
 from odoo_cli.core import paths
 from odoo_cli.core.models import Workspace, Worktree
 
-#: Written inside every skill folder we install. The global skill dirs are
-#: shared with the user, so refresh/uninstall only ever touch marker-bearing
+#: Written inside every skill folder we install. The skill dirs may also hold
+#: the user's own skills, so refresh/uninstall only ever touch marker-bearing
 #: folders; a folder without it is left alone (the `odoo-*` name is namespacing,
 #: not ownership).
 MARKER = ".installed-by-odoo-cli"
@@ -96,7 +103,7 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-# --- skills (tool-owned, refreshable, installed globally) -------------------
+# --- skills (tool-owned, refreshable, installed in the workspace) -----------
 
 
 @dataclass
@@ -107,10 +114,13 @@ class SkillsResult:
 
 
 def install_skills(
-    env: Mapping[str, str] | None = None, which: WhichFn = shutil.which
+    root: Path,
+    env: Mapping[str, str] | None = None,
+    which: WhichFn = shutil.which,
 ) -> SkillsResult:
-    """Copy the bundled skills into each detected harness skill dir, stamping
-    the ownership MARKER, and prune marker-bearing folders no longer bundled.
+    """Copy the bundled skills into the workspace's skill dirs (under `root`),
+    stamping the ownership MARKER, and prune marker-bearing folders no longer
+    bundled.
 
     A folder without the MARKER is never touched (recorded in `skipped` on a
     name collision). Idempotent, so this is also the refresh/sync path.
@@ -119,7 +129,7 @@ def install_skills(
     result = SkillsResult()
     bundled = _bundled_skills()
     names = {name for name, _ in bundled}
-    for skills_dir in _skill_dirs(env, which):
+    for skills_dir in _skill_dirs(root, env, which):
         skills_dir.mkdir(parents=True, exist_ok=True)
         for name, src in bundled:
             dest = skills_dir / name
@@ -139,12 +149,37 @@ def install_skills(
 
 
 def uninstall_skills(
-    env: Mapping[str, str] | None = None, which: WhichFn = shutil.which
+    root: Path,
+    env: Mapping[str, str] | None = None,
+    which: WhichFn = shutil.which,
 ) -> list[Path]:
-    """Remove only marker-bearing skill folders from the detected dirs."""
+    """Remove only marker-bearing skill folders from the workspace skill dirs."""
     env = os.environ if env is None else env
     removed: list[Path] = []
-    for skills_dir in _skill_dirs(env, which):
+    for skills_dir in _skill_dirs(root, env, which):
+        if not skills_dir.is_dir():
+            continue
+        for child in _subdirs(skills_dir):
+            if (child / MARKER).exists():
+                shutil.rmtree(child)
+                removed.append(child)
+    return removed
+
+
+def prune_legacy_global_skills(env: Mapping[str, str] | None = None) -> list[Path]:
+    """Remove marker-bearing skill folders from the **global** `~/.agents/skills`
+    and `~/.claude/skills` dirs that earlier versions installed into.
+
+    Skills are now workspace-local; a stale global copy would keep biasing the
+    user's unrelated sessions, the very thing the move avoids. Only folders we
+    stamped (the MARKER) are removed, so a user's own global skills are safe. The
+    Claude dir is swept unconditionally — Claude may since have been removed, but
+    our leftovers should still go.
+    """
+    env = os.environ if env is None else env
+    home = Path(env.get("HOME") or Path.home())
+    removed: list[Path] = []
+    for skills_dir in (home / ".agents" / "skills", home / ".claude" / "skills"):
         if not skills_dir.is_dir():
             continue
         for child in _subdirs(skills_dir):
@@ -183,13 +218,14 @@ def _subdirs(path: Path) -> list[Path]:
     return [child for child in path.iterdir() if child.is_dir()]
 
 
-def _skill_dirs(env: Mapping[str, str], which: WhichFn) -> set[Path]:
-    """`~/.agents/skills` always — the shared AGENTS.md-convention dir read by
-    Codex, opencode, Copilot CLI, and VS Code Copilot; `~/.claude/skills` only
-    when Claude is detected."""
-    dirs: set[Path] = {paths.agents_skills_dir(env)}
+def _skill_dirs(root: Path, env: Mapping[str, str], which: WhichFn) -> set[Path]:
+    """`<workspace>/.agents/skills` always — the shared AGENTS.md-convention dir
+    read by Codex, opencode, Copilot CLI, and VS Code Copilot; `<workspace>/.claude/skills`
+    only when Claude is detected. Both are under the workspace `root`, not the
+    user's home, so the skills stay scoped to this workspace."""
+    dirs: set[Path] = {root / ".agents" / "skills"}
     if _claude_present(env, which):
-        dirs.add(paths.claude_skills_dir(env))
+        dirs.add(root / ".claude" / "skills")
     return dirs
 
 

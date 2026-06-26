@@ -24,8 +24,10 @@ class AgentAssetsTestCase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.home = Path(self._tmp.name)
         self.env = make_env(self.home)
-        self.claude_skills = self.home / ".claude" / "skills"
-        self.agents_skills = self.home / ".agents" / "skills"
+        # skills install into the workspace, not home
+        self.root = make_workspace(self.home)
+        self.claude_skills = self.root / ".claude" / "skills"
+        self.agents_skills = self.root / ".agents" / "skills"
 
 
 # --- workspace / worktree docs ----------------------------------------------
@@ -122,7 +124,7 @@ class TestWorktreeDocs(AgentAssetsTestCase):
 
 class TestSkillDirs(AgentAssetsTestCase):
     def dirs(self, which):
-        return agent_assets._skill_dirs(self.env, which)
+        return agent_assets._skill_dirs(self.root, self.env, which)
 
     def test_agents_dir_always_present(self):
         # no harness at all: the shared AGENTS.md dir is still written
@@ -163,7 +165,7 @@ class TestSkillDirs(AgentAssetsTestCase):
 class TestSkills(AgentAssetsTestCase):
     def install(self, which=None):
         return agent_assets.install_skills(
-            env=self.env, which=which or which_only("claude")
+            self.root, env=self.env, which=which or which_only("claude")
         )
 
     def test_installs_bundled_skills_with_marker(self):
@@ -173,7 +175,7 @@ class TestSkills(AgentAssetsTestCase):
         self.assertTrue((review / "SKILL.md").is_file())
         self.assertTrue((review / MARKER).is_file())
         self.assertIn(review, result.installed)
-        # the shared ~/.agents/skills dir is always written too
+        # the shared <workspace>/.agents/skills dir is always written too
         self.assertTrue((self.agents_skills / "odoo-review" / "SKILL.md").is_file())
 
     def test_agents_skills_installed_without_any_harness(self):
@@ -228,11 +230,34 @@ class TestSkills(AgentAssetsTestCase):
         mine.mkdir()
         (mine / "SKILL.md").write_text("mine\n")
 
-        removed = agent_assets.uninstall_skills(env=self.env, which=which_only("claude"))
+        removed = agent_assets.uninstall_skills(
+            self.root, env=self.env, which=which_only("claude")
+        )
 
         self.assertTrue(mine.exists())
         self.assertFalse((self.claude_skills / "odoo-cli").exists())
         self.assertTrue(any(p.name == "odoo-cli" for p in removed))
+
+    def test_prune_legacy_global_skills_removes_only_marker_bearing(self):
+        # simulate an old global install under ~ plus a user's own global skill
+        g_agents = self.home / ".agents" / "skills"
+        g_claude = self.home / ".claude" / "skills"
+        ours = g_agents / "odoo-cli"
+        ours.mkdir(parents=True)
+        (ours / MARKER).write_text("")
+        ours_claude = g_claude / "odoo-review"
+        ours_claude.mkdir(parents=True)
+        (ours_claude / MARKER).write_text("")
+        mine = g_agents / "my-own"
+        mine.mkdir()
+        (mine / "SKILL.md").write_text("mine\n")
+
+        removed = agent_assets.prune_legacy_global_skills(env=self.env)
+
+        self.assertFalse(ours.exists())
+        self.assertFalse(ours_claude.exists())
+        self.assertTrue(mine.exists())  # no marker → untouched
+        self.assertEqual({p.name for p in removed}, {"odoo-cli", "odoo-review"})
 
 
 # --- packaging: assets must ship and be readable as resources ---------------

@@ -41,10 +41,9 @@ def odoo_conf_path(env: Mapping[str, str] | None = None) -> Path:
     return _config_home(env) / "odoo" / "odoo.conf"
 
 
-# Agent-harness directories (see specs/agentic_context.md). `~/.agents/skills`
-# is the shared AGENTS.md-convention skill dir (Codex, opencode, Copilot CLI,
-# and VS Code Copilot all read it) and is always written; the Claude dirs are
-# used only when Claude itself is detected. The config dirs are presence markers.
+# Agent-harness directories (see specs/agentic_context.md). These are the home
+# dirs used only to *detect* Claude — skills install into the workspace, not
+# here (see core/agent_assets.py). The config dirs are presence markers.
 
 
 def claude_dir(env: Mapping[str, str] | None = None) -> Path:
@@ -68,14 +67,3 @@ def claude_desktop_dirs(env: Mapping[str, str] | None = None) -> list[Path]:
     if appdata:
         dirs.append(Path(appdata) / "Claude")  # Windows
     return dirs
-
-
-def claude_skills_dir(env: Mapping[str, str] | None = None) -> Path:
-    return claude_dir(env) / "skills"
-
-
-def agents_skills_dir(env: Mapping[str, str] | None = None) -> Path:
-    """`~/.agents/skills` — the shared AGENTS.md-convention skill dir, read by
-    Codex, opencode, Copilot CLI, and VS Code Copilot."""
-    env = os.environ if env is None else env
-    return _home(env) / ".agents" / "skills"
