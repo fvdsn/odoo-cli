@@ -30,7 +30,7 @@
     -> the script lives at `install.sh` in this repo: it announces what it
        will install, ensures Python 3.10+ and git (apt/Homebrew), downloads
        the latest wheel from PyPI (sha256-verified), unpacks it under
-       `~/.local/share/odoo-cli` with a launcher at `~/.local/bin/odoo`, then
+       `~/.local/share/Odoo/cli` with a launcher at `~/.local/bin/odoo`, then
        runs `odoo init`; no pip, no venv, no third-party tooling, and no
        confirmation prompts (sudo's password prompt is the consent point)
 

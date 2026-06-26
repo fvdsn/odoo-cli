@@ -5,7 +5,7 @@
 #
 # Ensures Python 3.10+ and git (installing them with apt-get or Homebrew when
 # missing), downloads the latest odoo-cli-official wheel from PyPI (verified
-# against its sha256), unpacks it under ~/.local/share/odoo-cli, writes the
+# against its sha256), unpacks it under ~/.local/share/Odoo/cli, writes the
 # `odoo` launcher at ~/.local/bin/odoo, then runs `odoo init`. Everything that
 # will be installed is announced first; only platform packages are used.
 #
@@ -18,13 +18,17 @@
 set -u
 
 SOURCE="${ODOO_CLI_INSTALL_SOURCE:-}"
-LIB_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/odoo-cli/lib"
+# Live next to Odoo's own data dir (appdirs uses ~/.local/share/Odoo on Linux).
+LIB_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/Odoo/cli"
 BIN_DIR="$HOME/.local/bin"
-# `odoo init` needs more than the interpreter: git for the clones, the venv
-# module (a separate package on Debian/Ubuntu), and the headers Odoo's own
-# requirements compile against.
-APT_PACKAGES="git python3 python3-venv python3-dev
-    build-essential libpq-dev libldap2-dev libsasl2-dev"
+# `odoo init` needs more than the interpreter: the venv module (a separate
+# package on Debian/Ubuntu) and the headers Odoo's own requirements compile
+# against (the venvs don't use system site-packages, so psycopg2/lxml/python-ldap
+# build from source). These are checked one by one with `dpkg -s` so we install
+# only the ones actually missing; python3 and git are handled separately because
+# a non-apt interpreter or git (pyenv, /usr/local) is perfectly fine.
+APT_DEV_PACKAGES="python3-venv python3-dev build-essential
+    libpq-dev libldap2-dev libsasl2-dev"
 
 say()  { printf '%s\n' "$*"; }
 warn() { printf 'WARNING: %s\n' "$*" >&2; }
@@ -57,31 +61,40 @@ apt_prefix() {
     fi
 }
 
-apt_is_complete() {
-    find_python >/dev/null || return 1
-    command -v git >/dev/null 2>&1 || return 1
-    "$(find_python)" -m ensurepip --version >/dev/null 2>&1 || return 1
-    dpkg -s python3-dev build-essential libpq-dev libldap2-dev libsasl2-dev \
-        >/dev/null 2>&1 || return 1
+# List the apt packages still needed, one per line (empty when nothing is
+# missing). A missing interpreter pulls in python3 plus its venv/headers; git
+# only when no git is on PATH; the dev packages whenever `dpkg -s` can't find
+# them. The caller de-duplicates, so naming python3-venv/python3-dev twice is
+# fine.
+apt_missing() {
+    local pkg
+    if ! find_python >/dev/null; then
+        printf '%s\n' python3 python3-venv python3-dev
+    fi
+    command -v git >/dev/null 2>&1 || printf '%s\n' git
+    # shellcheck disable=SC2086
+    for pkg in $APT_DEV_PACKAGES; do
+        dpkg -s "$pkg" >/dev/null 2>&1 || printf '%s\n' "$pkg"
+    done
 }
 
 setup_linux() {
-    if apt_is_complete; then
-        return 0
-    fi
+    local missing
+    missing=$(apt_missing | sort -u | tr '\n' ' ')
+    missing=${missing% }
+    [ -z "$missing" ] && return 0  # every prerequisite already present
     command -v apt-get >/dev/null 2>&1 \
-        || fail "Python 3.10+ is missing and apt-get was not found;" \
+        || fail "missing prerequisites ($missing) and apt-get was not found;" \
             "install Python 3.10+ and git manually, then re-run"
     local sudo_cmd
     sudo_cmd=$(apt_prefix) || exit 1
     say "Installing with apt-get${sudo_cmd:+ (sudo may ask for your password)}:"
-    # shellcheck disable=SC2086
-    say "   " $APT_PACKAGES
+    say "    $missing"
     $sudo_cmd env DEBIAN_FRONTEND=noninteractive apt-get update \
         || fail "apt-get update failed"
     # shellcheck disable=SC2086
     $sudo_cmd env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        $APT_PACKAGES || fail "apt-get install failed"
+        $missing || fail "apt-get install failed"
 }
 
 # Blobless clones (used by `odoo init`) are only reliable on git >= 2.40;
@@ -158,6 +171,34 @@ with zipfile.ZipFile(io.BytesIO(data)) as archive:
 PYEOF
 }
 
+# Make `odoo` work in new terminals without the user touching anything: append
+# the PATH export to their shell's login profile, guarded by a marker so re-runs
+# never duplicate it. ~/.local/bin is the standard user bin dir; some systems
+# (Debian's ~/.profile) already add it, in which case we do nothing.
+ensure_on_path() {
+    case ":$PATH:" in
+        *":$BIN_DIR:"*) return 0 ;;  # already on PATH, nothing to do
+    esac
+    local rc marker
+    case "$(basename "${SHELL:-sh}")" in
+        zsh)  rc="$HOME/.zprofile" ;;   # sourced by every login zsh (macOS, …)
+        bash) rc="$HOME/.bashrc" ;;     # sourced by interactive bash
+        *)    rc="$HOME/.profile" ;;
+    esac
+    marker="# added by odoo-cli installer"
+    if [ -f "$rc" ] && grep -qF "$marker" "$rc"; then
+        return 0  # a previous run already added it
+    fi
+    if printf '\n# Make the odoo command available\nexport PATH="$HOME/.local/bin:$PATH"  %s\n' \
+        "$marker" >> "$rc"; then
+        say "Added $BIN_DIR to your PATH in $rc"
+        say "   Open a new terminal, or run: source $rc"
+    else
+        warn "could not update $rc; add this to your shell profile yourself:" \
+            "export PATH=\"\$HOME/.local/bin:\$PATH\""
+    fi
+}
+
 main() {
     case "$(uname -s)" in
         Linux) setup_linux ;;
@@ -196,11 +237,7 @@ if __name__ == "__main__":
 LAUNCHER
     chmod +x "$BIN_DIR/odoo"
     say "Installed the odoo command at $BIN_DIR/odoo"
-    case ":$PATH:" in
-        *":$BIN_DIR:"*) ;;
-        *) warn "$BIN_DIR is not on your PATH; add it to your shell profile:" \
-            "export PATH=\"\$HOME/.local/bin:\$PATH\"" ;;
-    esac
+    ensure_on_path
 
     say "Setting up the Odoo workspace (this installs PostgreSQL if missing)..."
     "$BIN_DIR/odoo" init || fail "odoo init failed"
