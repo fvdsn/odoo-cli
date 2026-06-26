@@ -13,8 +13,10 @@ def register(group) -> None:
     from odoo_cli.commands import (
         config,
         db,
+        fetch,
         init,
         module,
+        pull,
         repo,
         shell,
         start,
@@ -27,8 +29,10 @@ def register(group) -> None:
 
     group.add_command(config.config)
     group.add_command(db.db)
+    group.add_command(fetch.fetch)
     group.add_command(init.init)
     group.add_command(module.module)
+    group.add_command(pull.pull)
     group.add_command(repo.repo)
     group.add_command(shell.shell)
     group.add_command(start.start)

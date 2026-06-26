@@ -60,6 +60,66 @@ These carry a `[v2]` tag in `requirements.md` and will be fleshed out here:
 (Linked worktrees and `odoo repo add` were promoted to v1 so support users can
 validate them early.)
 
+## `odoo fetch` and `odoo pull` (agreed design)
+
+Two git-faithful commands that resolve the open questions left in
+`requirements.md` → "Future commands → `odoo pull` / `odoo fetch`".
+
+### Model recap
+
+`.repositories/<repo>.git` are bare repos that mirror origin into their own
+`refs/heads/*` (`+refs/heads/*:refs/heads/*`). A worktree holds one git worktree
+per repo, each on a branch named after the worktree. A **version worktree**
+(`19.0`, `master`, `saas-19.3`) sits on the mirror branch itself; a **feature
+worktree** (`19.0-fix`, `customer-b`) sits on a local-only branch. Branches carry
+no recorded upstream in this model, so pull derives what a checkout tracks from
+the branch name via `infer_base_version` (`19.0-fix` → `19.0`; `master` →
+`master`; `customer-b` → none).
+
+### `odoo fetch [repo…]`
+
+- Fetches every repo in `.repositories` (or only the named ones) from origin.
+- Picks up new commits on non-checked-out branches **and brand-new branches**
+  (e.g. a freshly released `20.0`, so `worktree create 20.0` then works).
+- Never touches a working tree. Branches a worktree has checked out are excluded
+  from the bare-repo fetch (git refuses to update them); those advance via pull.
+- Per-repo outcome; a repo with no origin remote or an incomplete clone is
+  skipped with a note, the rest still fetch.
+
+### `odoo pull [-w WORKTREE]`
+
+- Target: the current worktree (from cwd) or `-w`. Acts on **every checkout** in
+  the worktree.
+- For each checkout: `base = infer_base_version(branch)`; fetch `origin <base>`
+  by name (sidesteps the mirror ambiguity — we always read origin's real tip),
+  then **`merge --ff-only`**. Outcomes:
+  - **advanced** (`<old>..<new>`) or **already up to date** — the happy path for
+    version worktrees and not-yet-diverged feature branches.
+  - **skipped, diverged** — a feature branch with its own commits can't
+    fast-forward; print the exact `git -C <checkout> pull --rebase origin <base>`
+    (or `--no-rebase` to merge) for the user to run by hand.
+  - **skipped, no tracked version** — `infer_base_version` is None, or origin has
+    no `<base>` branch (e.g. an addon repo branched off its default branch).
+  - **skipped, uncommitted changes** — the checkout is dirty; commit or stash
+    first.
+- **Never interactive, per-repo, non-destructive.** ff-only only; one repo that
+  can't advance is skipped with guidance, the rest still pull; a final summary
+  lists what moved and what was skipped. No `--rebase`/`--merge` flags (they can
+  stop mid-loop on conflicts — users who want that run git directly).
+- **Linked worktree** → its symlinked checkouts resolve to the source's, so pull
+  advances the source and notes "linked from `<source>`".
+- **No venv work.** A version change (master rolling) is handled by `odoo start`,
+  which already rebuilds the venv when the detected version retargets it.
+
+### Deliberately deferred
+
+- `--no-fetch` / offline pull, and real remote-tracking refs
+  (`refs/remotes/origin/*`). The everyday `odoo pull` fetches over the network
+  like `git pull`, so neither is needed yet. Remote-tracking refs become worth it
+  when `odoo status` (ahead/behind without a network call) is built; revisit
+  then.
+- `odoo pull --all` (a "morning sync" across worktrees).
+
 ## Parked ideas
  - offload `odoo.conf` resolution to odoo-bin itself (an odoo-bin command that
    prints the resolved config path/contents), instead of the CLI always passing

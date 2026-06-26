@@ -764,11 +764,10 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
    - should be designed to provide genuinely helpful, actionable diagnostics
    - avoid being only a shallow checklist of installed tools
  - `odoo pull` / `odoo fetch` [v2] — sync repositories with remotes
-   - clarify what "pull across repos" means in a bare-repo + worktree model
-   - fetch into `.repositories/` bare repos, then fast-forward worktrees?
-   - what happens with dirty worktrees or local commits?
-   - should it detect new dependencies in requirements.txt and prompt for `odoo venv`?
-   - define a "morning sync" workflow: pull, rebuild venv if needed, restart server
+   - design agreed in `requirements_v2.md` → "`odoo fetch` and `odoo pull`":
+     `fetch` updates the bare repos; `pull` fast-forwards a worktree's checkouts
+     (ff-only, skip+guide on divergence/dirty/feature branches); venv drift is
+     `odoo start`'s job; "morning sync" (`--all`) and offline pull are deferred
  - `odoo dump / restore / neutralize` [v2] — database lifecycle for support workflows
  - `odoo checkout` [v2] — clarify how branch switching should work in a worktree-first model
    - distinguish switching a worktree version from creating/using feature branches

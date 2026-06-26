@@ -15,6 +15,7 @@ from odoo_cli.core.postgres import PostgresService
 from odoo_cli.core.repositories import RepositoryService
 from odoo_cli.core.server import RunStateStore, ServerService
 from odoo_cli.core.shell import ShellService
+from odoo_cli.core.sync import PullService
 from odoo_cli.core.target import TargetResolver
 from odoo_cli.core.testing import TestingService
 from odoo_cli.core.venvs import VenvService
@@ -60,6 +61,10 @@ class Services:
     @cached_property
     def worktrees(self) -> WorktreeService:
         return WorktreeService(self.git, self.repositories, self.postgres)
+
+    @cached_property
+    def pull(self) -> PullService:
+        return PullService(self.git)
 
     @cached_property
     def venvs(self) -> VenvService:

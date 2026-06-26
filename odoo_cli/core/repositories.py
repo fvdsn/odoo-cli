@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import shutil
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from odoo_cli.core.errors import (
@@ -22,6 +23,16 @@ from odoo_cli.core.errors import (
 )
 from odoo_cli.core.models import INTERNAL_DIRS, RepositorySpec, Workspace
 from odoo_cli.util.git import Git
+from odoo_cli.util.process import ProcessError
+
+
+@dataclass
+class RepoFetchOutcome:
+    """Result of fetching one bare repo (`odoo fetch`)."""
+
+    name: str
+    fetched: bool
+    reason: str = ""
 
 #: Cloned by `odoo init`.
 DEFAULT_REPOS = ("odoo", "documentation")
@@ -219,6 +230,44 @@ class RepositoryService:
             if path.resolve() != repo:
                 return True
         return False
+
+    def fetch(
+        self, workspace: Workspace, names: tuple[str, ...] | None = None
+    ) -> list[RepoFetchOutcome]:
+        """`odoo fetch`: update the bare repos from origin (new commits and new
+        branches), touching no working tree. Per-repo outcome so one bad repo
+        (no remote, incomplete clone, offline) never aborts the rest."""
+        present = {spec.name: spec for spec in self.list(workspace)}
+        if names:
+            selected = list(names)
+        else:
+            selected = sorted(present)
+        outcomes: list[RepoFetchOutcome] = []
+        for name in selected:
+            spec = present.get(name)
+            if spec is None:
+                outcomes.append(RepoFetchOutcome(name, False, "no such repository"))
+            elif self.is_corrupt(workspace, name):
+                outcomes.append(
+                    RepoFetchOutcome(name, False, "incomplete clone; re-clone it")
+                )
+            elif spec.url is None:
+                outcomes.append(RepoFetchOutcome(name, False, "no origin remote"))
+            else:
+                try:
+                    # checked-out branches belong to worktrees; git refuses to
+                    # update them in a bare repo, so exclude them (pull advances
+                    # those). New and other branches still update.
+                    self.git.fetch(
+                        spec.path,
+                        exclude_branches=self.git.worktree_branches(spec.path),
+                    )
+                    outcomes.append(RepoFetchOutcome(name, True))
+                except ProcessError:
+                    outcomes.append(
+                        RepoFetchOutcome(name, False, "fetch failed (offline?)")
+                    )
+        return outcomes
 
     def clone_mode(self, full: bool) -> str:
         """The effective strategy for display: old git silently forces full

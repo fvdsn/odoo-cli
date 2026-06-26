@@ -67,6 +67,21 @@ class Git:
         argv += [f"^refs/heads/{branch}" for branch in exclude_branches]
         self._runner.run(argv)
 
+    def fetch_branch(self, checkout: Path, branch: str):
+        """Fetch a single branch from origin into a checkout (updates
+        FETCH_HEAD). Returns the raw result; callers classify failures (a
+        missing remote ref vs. a network error)."""
+        return self._runner.run(
+            ["git", "-C", checkout, "fetch", "origin", branch], check=False
+        )
+
+    def merge_ff_only(self, checkout: Path, ref: str = "FETCH_HEAD"):
+        """Fast-forward the checked-out branch to `ref`, or fail without
+        changing anything (no merge commit). Returns the raw result."""
+        return self._runner.run(
+            ["git", "-C", checkout, "merge", "--ff-only", ref], check=False
+        )
+
     def config_get(self, repo: Path, key: str) -> str | None:
         result = self._runner.run(
             ["git", "-C", repo, "config", "--get", key], check=False

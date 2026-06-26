@@ -51,6 +51,11 @@ root or from inside a worktree.
   duplicate (`odoo worktree create customer-b customer-a`). `--linked` shares
   the source's checkouts through symlinks; `--addon <repo>` checks out an added
   repo (requires `--linked`).
+- `odoo fetch [repo…]` — fetch new commits and branches into `.repositories`
+  from origin; touches no worktree.
+- `odoo pull [-w <worktree>]` — fast-forward the worktree's checkouts to the
+  latest of what they track. Fast-forward only: a diverged, dirty, or
+  non-version-tracking checkout is skipped with guidance, and the rest pull.
 
 ## Configuration
 
