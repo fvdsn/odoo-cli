@@ -60,16 +60,41 @@ class DatabaseService:
     def is_initialized(self, target: Target) -> bool:
         """Whether the database holds an initialized Odoo registry. A failing
         query means no ir_module_module table: not initialized."""
+        return self._initialized(target.workspace.config, target.database)
+
+    def _initialized(self, conf, name: str) -> bool:
         try:
             rows = self.postgres.sql(
-                target.workspace.config,
-                target.database,
+                conf,
+                name,
                 "SELECT 1 FROM ir_module_module "
                 "WHERE name = 'base' AND state = 'installed'",
             )
         except PostgresError:
             return False
         return bool(rows)
+
+    def seed_from(self, workspace: Workspace, source: str, target: str) -> bool:
+        """Copy database `source` to `target` (filestore included) as the
+        starting point for a new worktree, so the source's installed modules
+        need no reinstall. Returns True when the copy happened.
+
+        A no-op when `target` already exists, or when `source` is missing or
+        holds no initialized registry (an empty leftover seeds nothing useful;
+        the empty-on-first-start rule applies instead). `createdb -T` needs
+        the source free of sessions, so open connections on it are terminated
+        (same policy as `db clone`)."""
+        conf = workspace.config
+        validate_name(target, kind="database name")
+        if self.postgres.db_exists(conf, target):
+            return False
+        if not self.postgres.db_exists(conf, source):
+            return False
+        if not self._initialized(conf, source):
+            return False
+        self.postgres.copy_db(conf, source, target)
+        self._sync_filestore(conf, source, target, shutil.copytree)
+        return True
 
     def reset(self, target: Target, *, python: Path) -> list[str]:
         """Drop and recreate the database, reinstalling the module set read

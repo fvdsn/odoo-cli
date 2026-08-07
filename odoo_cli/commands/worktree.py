@@ -5,7 +5,7 @@ from __future__ import annotations
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
 from odoo_cli.core import agent_assets
-from odoo_cli.core.errors import OdooCliError, VersionNotFound
+from odoo_cli.core.errors import OdooCliError, PostgresError, VersionNotFound
 from odoo_cli.core.worktrees import discover, infer_base_version
 
 
@@ -74,6 +74,12 @@ def list_(ctx: CliContext, as_json: bool) -> None:
     help="Check out an added repository at the worktree root (repeatable, "
     "requires --linked).",
 )
+@click.option(
+    "--empty-db",
+    is_flag=True,
+    help="Do not copy the source worktree's database; the new worktree's "
+    "database is created empty on first start.",
+)
 @click.option("--json", "as_json", is_flag=True, help="Machine-readable outcome.")
 @click.pass_obj
 def create(
@@ -82,6 +88,7 @@ def create(
     source: str | None,
     linked: bool,
     addons: tuple[str, ...],
+    empty_db: bool,
     as_json: bool,
 ) -> None:
     """Create worktree NAME from SOURCE.
@@ -98,6 +105,11 @@ def create(
     With --linked, SOURCE names an existing worktree whose checkouts are
     shared through symlinks (`odoo worktree create customer-a 19.0
     --linked`); only --addon repositories get real checkouts.
+
+    When SOURCE is an existing worktree with an initialized database, the
+    new worktree's database is created from it as a template (filestore
+    included), so its installed modules need no reinstall; --empty-db
+    skips the copy.
     """
     services, out = ctx.services, ctx.output
     if as_json:
@@ -117,15 +129,18 @@ def create(
         source = infer_base_version(name) or name
     inferred_base = single_argument and source != name
     workspace = services.workspace.resolve()
+    # a worktree source wins over a ref of the same name; both readings
+    # coincide for version-named worktrees
+    source_is_worktree = (
+        source != name and (workspace.root / source / "odoo").exists()
+    )
 
     try:
         if linked:
             result = services.worktrees.create_linked(
                 workspace, name, source, list(addons)
             )
-        elif source != name and (workspace.root / source / "odoo").exists():
-            # a worktree source wins over a ref of the same name; both
-            # readings coincide for version-named worktrees
+        elif source_is_worktree:
             result = services.worktrees.create_duplicate(workspace, name, source)
         else:
             result = services.worktrees.create_full(workspace, name, source)
@@ -153,6 +168,18 @@ def create(
     for warning in result.warnings:
         out.warn(warning)
 
+    # a worktree created from another worktree starts from its database;
+    # best-effort: without a usable source database (or postgres at all)
+    # the empty-on-first-start rule applies as before
+    seeded_from = None
+    if not empty_db and (linked or source_is_worktree):
+        try:
+            if services.database.seed_from(workspace, source, name):
+                seeded_from = source
+                out.echo(f"created database {name} from {source}")
+        except (PostgresError, OSError) as exc:
+            out.warn(f"could not copy database {source} to {name}: {exc}")
+
     out.echo("Setting up the virtual environment...")
     venv = services.venvs.ensure(workspace, result.worktree)
     try:  # best-effort: a thin AGENTS.md for an agent started in this worktree
@@ -171,6 +198,7 @@ def create(
                     {"repository": s.name, "reason": s.reason} for s in result.skipped
                 ],
                 "warnings": list(result.warnings),
+                "database_seeded_from": seeded_from,
                 "venv": str(venv.path),
             }
         )

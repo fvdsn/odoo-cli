@@ -185,6 +185,7 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
     def test_linked_create_with_addon(self):
         make_worktree(self.root, "19.0", version="19.0")
         (self.repos() / "customer-a-addons.git").mkdir()
+        self.runner.expect("psql", stdout="")  # no source db: nothing to seed
         result = self.invoke(
             "worktree", "create", "customer-a", "19.0",
             "--linked", "--addon", "customer-a-addons",
@@ -216,21 +217,25 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
         self.assertEqual(result.exit_code, 1)
         self.assertIn("link from '19.0' instead", result.exception.hint)
 
-    def test_worktree_source_duplicates_it(self):
-        make_worktree(self.root, "fix-pos", version="19.0")
+    def expect_duplicate_git(self, name, source, version="19.0"):
         for repo in ("odoo", "documentation"):
             self.runner.expect(
-                "git", "-C", str(self.root / "fix-pos" / repo),
-                "symbolic-ref", stdout="fix-pos\n",
+                "git", "-C", str(self.root / source / repo),
+                "symbolic-ref", stdout=f"{source}\n",
             )
             self.runner.expect(
                 "git", "-C", str(self.repos() / f"{repo}.git"), "rev-parse",
-                "--verify", "--quiet", "refs/heads/hotfix", returncode=1,
+                "--verify", "--quiet", f"refs/heads/{name}", returncode=1,
             )
             self.runner.expect(
                 "git", "-C", str(self.repos() / f"{repo}.git"),
-                "worktree", "add", effect=self.worktree_effect("19.0"),
+                "worktree", "add", effect=self.worktree_effect(version),
             )
+
+    def test_worktree_source_duplicates_it(self):
+        make_worktree(self.root, "fix-pos", version="19.0")
+        self.expect_duplicate_git("hotfix", "fix-pos")
+        self.runner.expect("psql", stdout="")  # no source db: nothing to seed
 
         result = self.invoke("worktree", "create", "hotfix", "fix-pos")
 
@@ -243,6 +248,61 @@ class TestWorktreeCreate(RepoWorktreeTestCase):
         )
         # branch hotfix forks from fix-pos's checked-out branch
         self.assertEqual(add[-1], "fix-pos")
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
+
+    def test_duplicate_seeds_database_from_source(self):
+        make_worktree(self.root, "fix-pos", version="19.0")
+        self.expect_duplicate_git("hotfix", "fix-pos")
+        # data_dir under the temp home keeps the filestore sync hermetic
+        conf = self.home / ".config" / "odoo" / "odoo.conf"
+        conf.parent.mkdir(parents=True)
+        conf.write_text(f"[options]\ndata_dir = {self.home / 'odoo-data'}\n")
+        self.runner.expect("psql", stdout="")  # terminate-backends fallback
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = 'hotfix'", stdout="",
+        )
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = 'fix-pos'", stdout="1\n",
+        )
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM ir_module_module "
+            "WHERE name = 'base' AND state = 'installed'", stdout="1\n",
+        )
+        self.runner.expect("createdb", stdout="")
+
+        result = self.invoke("worktree", "create", "hotfix", "fix-pos")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("created database hotfix from fix-pos", result.output)
+        self.assertIn(("createdb", "-T", "fix-pos", "hotfix"), self.runner.calls)
+
+    def test_empty_db_skips_seeding(self):
+        make_worktree(self.root, "fix-pos", version="19.0")
+        self.expect_duplicate_git("hotfix", "fix-pos")
+
+        result = self.invoke(
+            "worktree", "create", "hotfix", "fix-pos", "--empty-db"
+        )
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertFalse(any(c[0] == "psql" for c in self.runner.calls))
+
+    def test_seed_failure_does_not_block_creation(self):
+        make_worktree(self.root, "fix-pos", version="19.0")
+        self.expect_duplicate_git("hotfix", "fix-pos")
+        self.runner.expect(
+            "psql", returncode=2, stderr="connection refused",
+        )
+
+        result = self.invoke("worktree", "create", "hotfix", "fix-pos")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("worktree hotfix ready", result.output)
+        self.assertIn("could not copy database fix-pos to hotfix", result.stderr)
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
 
 
 class TestWorktreeRemove(RepoWorktreeTestCase):

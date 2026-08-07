@@ -646,6 +646,13 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
    - a worktree source wins over a ref of the same name; the readings
      coincide for version-named worktrees (their branches are named after
      the version)
+ - when SOURCE is an existing worktree (duplicate or `--linked`), the new
+   worktree's database is created from the source's as a template
+   (`createdb -T`, filestore included), sparing a reinstall of the source's
+   module set; `--empty-db` opts out
+   - best-effort: when the source database is missing, uninitialized, or
+     postgres is unreachable, creation proceeds and the empty-on-first-start
+     rule applies as before; the target database is never overwritten
  - `--addon $REPOSITORY` may be passed multiple times
  - `--addon` only accepts repository names that are present in `.repositories/` (e.g. cloned through `odoo repo add`)
  - `--addon` is a creation-time checkout action; addon membership is thereafter determined by the directories present at the worktree root, not by any stored list

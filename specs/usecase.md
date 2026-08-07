@@ -397,3 +397,8 @@ Source of truth:
   worktree with branches forked from `fix-pos`
 - uncommitted changes in the source are not copied; branches fork from the
   source's committed HEAD
+- the new worktree's database is created from the source's as a template
+  (`createdb -T`, filestore included) when it exists and is initialized, so a
+  large installed-module set needs no reinstall; `--empty-db` opts out, and
+  without a usable source database (or reachable postgres) the database is
+  simply created empty on first start, as before

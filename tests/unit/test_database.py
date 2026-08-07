@@ -135,3 +135,63 @@ class TestReset(DatabaseTestCase):
         reinstalled = self.service.reset(self.target, python=self.python)
         self.assertEqual(reinstalled, [])
         self.assertFalse(any(c[0] == "dropdb" for c in self.runner.calls))
+
+
+class TestSeedFrom(DatabaseTestCase):
+    """`worktree create` seeding: the new worktree's db is a `createdb -T`
+    copy of the source worktree's db when that is usable."""
+
+    def setUp(self):
+        super().setUp()
+        # data_dir under the temp home keeps the filestore sync hermetic
+        self.data_dir = self.home / "odoo-data"
+        conf_path = self.home / "odoo.conf"
+        conf_path.write_text(f"[options]\ndata_dir = {self.data_dir}\n")
+        self.workspace = Workspace(
+            root=self.root, config=OdooConf.load(conf_path)
+        )
+
+    def target_db_exists(self, exists: bool):
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = 'hotfix'",
+            stdout="1\n" if exists else "",
+        )
+
+    def test_seeds_database_and_filestore(self):
+        source_store = self.data_dir / "filestore" / "19.0"
+        source_store.mkdir(parents=True)
+        (source_store / "blob").write_text("attachment")
+        self.runner.expect("psql", stdout="")  # terminate-backends fallback
+        self.target_db_exists(False)
+        self.db_exists(True)
+        self.base_installed(True)
+        self.runner.expect("createdb", stdout="")
+        seeded = self.service.seed_from(self.workspace, "19.0", "hotfix")
+        self.assertTrue(seeded)
+        self.assertIn(("createdb", "-T", "19.0", "hotfix"), self.runner.calls)
+        copied = self.data_dir / "filestore" / "hotfix" / "blob"
+        self.assertEqual(copied.read_text(), "attachment")
+
+    def test_existing_target_untouched(self):
+        self.target_db_exists(True)
+        seeded = self.service.seed_from(self.workspace, "19.0", "hotfix")
+        self.assertFalse(seeded)
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
+
+    def test_missing_source_seeds_nothing(self):
+        self.target_db_exists(False)
+        self.db_exists(False)
+        seeded = self.service.seed_from(self.workspace, "19.0", "hotfix")
+        self.assertFalse(seeded)
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
+
+    def test_uninitialized_source_seeds_nothing(self):
+        # a leftover of an interrupted init: cloning it seeds nothing useful,
+        # the empty-on-first-start rule handles the new db instead
+        self.target_db_exists(False)
+        self.db_exists(True)
+        self.base_installed(None)
+        seeded = self.service.seed_from(self.workspace, "19.0", "hotfix")
+        self.assertFalse(seeded)
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
