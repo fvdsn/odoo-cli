@@ -9,6 +9,7 @@ from __future__ import annotations
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
 from odoo_cli.core.addons import resolve_addons_paths
+from odoo_cli.core.odoo_conf import OdooConf, is_set
 
 
 @click.command()
@@ -19,14 +20,16 @@ from odoo_cli.core.addons import resolve_addons_paths
 def where(ctx: CliContext, worktree: str | None, db: str | None, as_json: bool) -> None:
     """Show the resolved workspace, worktree, database, venv and command."""
     services, out = ctx.services, ctx.output
+    if as_json:
+        out.json_mode = True
     target = services.targets.resolve(worktree=worktree, db=db)
 
     venv_path = services.venvs.venv_path(target.workspace, target.worktree)
+    python = services.venvs.python_path(venv_path)
     ports = services.server.preview_ports(target)
     stored = services.server.store.read_ports(target) is not None
-    command = services.odoo_bin.server_start(
-        target, python=services.venvs.python_path(venv_path), ports=ports
-    )
+    command = services.odoo_bin.server_start(target, python=python, ports=ports)
+    conf = OdooConf.load(services.workspace.conf_path)
 
     data = {
         "workspace": str(target.workspace.root),
@@ -36,10 +39,23 @@ def where(ctx: CliContext, worktree: str | None, db: str | None, as_json: bool) 
         "version": services.worktrees.detect_version(target.worktree),
         "database": target.database,
         "venv": str(venv_path),
+        "python": str(python),
+        "odoo_bin": str(target.worktree.odoo_path / "odoo-bin"),
         "odoo_conf": str(services.workspace.conf_path),
         "addons_path": [str(p) for p in resolve_addons_paths(target.worktree)],
         "ports": {"http": ports.http, "gevent": ports.gevent, "reserved": stored},
         "command": command.redacted_argv,
+        # the full run contract: an external supervisor can spawn the server
+        # from these four fields without re-deriving anything
+        "cwd": str(command.cwd),
+        "env": command.env,
+        # connection facts a caller needs before the server is up; the
+        # password stays in odoo_conf (path above), never in output.
+        # Odoo's "False means unset" convention maps to null
+        "postgres": {
+            key: conf.get(f"db_{key}") if is_set(conf.get(f"db_{key}")) else None
+            for key in ("host", "port", "user")
+        },
     }
     if as_json:
         out.json(data)

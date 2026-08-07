@@ -646,6 +646,15 @@ class WorktreeService:
             release.read_release(worktree.path).version
         )
 
+    def checkouts(self, worktree: Worktree) -> list[dict]:
+        """The worktree's real (non-symlink) checkouts with their current
+        branch (None when detached). Part of the `worktree list --json`
+        contract consumed by external frontends."""
+        return [
+            {"name": path.name, "branch": self.git.current_branch(path)}
+            for path in self._real_checkouts(worktree)
+        ]
+
     # -- removal -----------------------------------------------------------
 
     def remove(

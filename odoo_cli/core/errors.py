@@ -5,6 +5,8 @@ The CLI layer translates these into concise messages and exit codes
 optional one-line next action shown after the message.
 """
 
+import re
+
 
 class OdooCliError(Exception):
     """Base class for user-facing failures (exit code 1)."""
@@ -13,6 +15,13 @@ class OdooCliError(Exception):
         super().__init__(message)
         self.message = message
         self.hint = hint
+
+    @property
+    def code(self) -> str:
+        """Stable machine-readable identifier, derived from the class name
+        (WorktreeNotFound -> worktree_not_found). Part of the JSON error
+        contract: renaming an exception class is a breaking change."""
+        return re.sub(r"(?<!^)(?=[A-Z])", "_", type(self).__name__).lower()
 
 
 class WorkspaceNotFound(OdooCliError):
@@ -78,6 +87,15 @@ class PostgresError(OdooCliError):
 
 class DatabaseNotFound(OdooCliError):
     """Read-only command targeting a database that does not exist."""
+
+
+class DatabaseExists(OdooCliError):
+    """Clone/rename target database already exists."""
+
+
+class ExternalDependencyNotInstallable(OdooCliError):
+    """A manifest-declared python dependency could not be installed into the
+    venv; the hint offers manual install and --skip-missing-deps."""
 
 
 class ServerNotRunning(OdooCliError):

@@ -17,9 +17,10 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from odoo_cli.core import release
+from odoo_cli.core import external_deps, release
 from odoo_cli.core.errors import NoCompatiblePython
 from odoo_cli.core.models import Workspace, Worktree
+from odoo_cli.util.locks import file_lock
 from odoo_cli.util.process import ProcessRunner
 
 READY_MARKER = ".odoo-cli-ready"
@@ -52,20 +53,32 @@ class VenvService:
         runs odoo-bin (a pull can retarget the venv, e.g. master rolling
         forward)."""
         path = self.venv_path(workspace, worktree)
-        if (path / READY_MARKER).is_file() and self.python_path(path).exists():
+        if self._ready(path):
             return VenvResult(path=path, created=False)
-        # incomplete (no ready marker): a failed creation may have left
-        # stale state behind; recreate from scratch
-        self._remove(path)
-        self._create(path, worktree)
+        with file_lock(self._lock_path(path)):
+            if self._ready(path):
+                # another process built it while we waited for the lock
+                return VenvResult(path=path, created=False)
+            # incomplete (no ready marker): a failed creation may have left
+            # stale state behind; recreate from scratch
+            self._remove(path)
+            self._create(path, worktree)
         return VenvResult(path=path, created=True)
 
     def rebuild(self, workspace: Workspace, worktree: Worktree) -> VenvResult:
         """`odoo venv`: recreate from scratch."""
         path = self.venv_path(workspace, worktree)
-        self._remove(path)
-        self._create(path, worktree)
+        with file_lock(self._lock_path(path)):
+            self._remove(path)
+            self._create(path, worktree)
         return VenvResult(path=path, created=True)
+
+    def _ready(self, path: Path) -> bool:
+        return (path / READY_MARKER).is_file() and self.python_path(path).exists()
+
+    @staticmethod
+    def _lock_path(path: Path) -> Path:
+        return path.parent / f".{path.name}.lock"
 
     @staticmethod
     def _remove(path: Path) -> None:
@@ -98,8 +111,36 @@ class VenvService:
                 ),
             )
         self._install_requirements(path, worktree, uv)
+        self._install_manifest_deps(path, worktree)
         path.mkdir(parents=True, exist_ok=True)  # no-op after a real create
         (path / READY_MARKER).touch()
+
+    def _install_manifest_deps(self, path: Path, worktree: Worktree) -> None:
+        """Manifest external_dependencies.python beyond requirements.txt
+        (phonenumbers, …), derived from the worktree's addons on every
+        (re)build — the manifests are the record, nothing is persisted.
+        Best-effort: one exotic module's uninstallable dep must not block the
+        venv; commands that actually select such a module raise the typed
+        error at their own pre-flight."""
+        from odoo_cli.util.process import ProcessError
+
+        deps = external_deps.python_deps(worktree, None)
+        python = self.python_path(path)
+        try:
+            missing = external_deps.missing_distributions(self.runner, python, list(deps))
+            if missing:
+                self.install_packages(path, missing)
+        except ProcessError:
+            pass
+
+    def install_packages(self, venv: Path, packages: list[str]) -> None:
+        """Install extra distributions into an existing venv (manifest
+        external_dependencies beyond requirements.txt)."""
+        python = self.python_path(venv)
+        if self.which("uv"):
+            self.runner.run(["uv", "pip", "install", "--python", python, *packages])
+        else:
+            self.runner.run([python, "-m", "pip", "install", *packages])
 
     def _install_requirements(self, path: Path, worktree: Worktree, uv: str | None) -> None:
         requirements = worktree.path / "odoo" / "requirements.txt"

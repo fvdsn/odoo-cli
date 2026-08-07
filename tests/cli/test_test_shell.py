@@ -85,20 +85,10 @@ class TestTestCommand(TestShellCommandsTestCase):
         argv = self.runner.stream_calls[-1]  # db init streams first
         self.assertEqual(argv[argv.index("-i") + 1], "base")
 
-    def test_all_spec_enumerates_addons(self):
-        addons = self.root / "19.0" / "odoo" / "addons"
-        for module in ("crm", "sale"):
-            (addons / module).mkdir(parents=True)
-            (addons / module / "__manifest__.py").write_text("{}\n")
-        (addons / "not_a_module").mkdir()
-        result = self.invoke("test", "all")
-        self.assertEqual(result.exit_code, 0, result.output)
-        argv = self.runner.stream_calls[0]
-        self.assertEqual(argv[argv.index("-i") + 1], "crm,sale")
-
-    def test_all_spec_with_no_addons_is_an_error(self):
+    def test_all_spec_was_removed(self):
         result = self.invoke("test", "all")
         self.assertEqual(result.exit_code, 1)
+        self.assertEqual(self.runner.stream_calls, [])  # nothing ran
 
     def test_tag_option(self):
         result = self.invoke("test", "crm", "-t", "test_lead")

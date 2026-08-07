@@ -9,11 +9,16 @@ from odoo_cli.cli._click import click
 
 
 class Output:
+    def __init__(self) -> None:
+        # Set by commands that received --json: stdout then carries exactly one
+        # JSON document, so progress/status lines are rerouted to stderr.
+        self.json_mode = False
+
     def echo(self, message: str = "") -> None:
-        click.echo(message)
+        click.echo(message, err=self.json_mode)
 
     def success(self, message: str) -> None:
-        click.secho(message, fg="green")
+        click.secho(message, fg="green", err=self.json_mode)
 
     def warn(self, message: str) -> None:
         click.secho(f"warning: {message}", fg="yellow", err=True)

@@ -50,6 +50,11 @@ def quote_literal(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
 
 
+def quote_ident(name: str) -> str:
+    """SQL identifier with quotes doubled (same second-line-of-defense rule)."""
+    return '"' + name.replace('"', '""') + '"'
+
+
 class PostgresService:
     def __init__(
         self,
@@ -288,8 +293,45 @@ class PostgresService:
                 hint=exc.result.stderr.strip() or None,
             ) from exc
 
-    def drop_db(self, conf: OdooConf, name: str) -> None:
-        """Terminates open connections first, then drops."""
+    def list_dbs(self, conf: OdooConf) -> list[tuple[str, int, str]]:
+        """(name, size_bytes, owner) for every non-template user database."""
+        rows = self.sql(
+            conf,
+            "postgres",
+            "SELECT datname, pg_database_size(datname), pg_get_userbyid(datdba) "
+            "FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres' "
+            "ORDER BY datname",
+        )
+        entries = []
+        for row in rows:
+            parts = row.split("|")
+            if len(parts) != 3:
+                continue
+            name, size, owner = parts
+            entries.append((name, int(size) if size.lstrip("-").isdigit() else 0, owner))
+        return entries
+
+    def copy_db(self, conf: OdooConf, source: str, target: str) -> None:
+        """`createdb -T source target`; the source must have no open sessions,
+        so they are terminated first (same policy as drop_db)."""
+        self._terminate_connections(conf, source)
+        try:
+            self.runner.run(["createdb", "-T", source, target], extra_env=self.env(conf))
+        except ProcessError as exc:
+            raise PostgresError(
+                f"could not copy database '{source}' to '{target}'",
+                hint=exc.result.stderr.strip() or None,
+            ) from exc
+
+    def rename_db(self, conf: OdooConf, old: str, new: str) -> None:
+        self._terminate_connections(conf, old)
+        self.sql(
+            conf,
+            "postgres",
+            f"ALTER DATABASE {quote_ident(old)} RENAME TO {quote_ident(new)}",
+        )
+
+    def _terminate_connections(self, conf: OdooConf, name: str) -> None:
         self.sql(
             conf,
             "postgres",
@@ -297,6 +339,10 @@ class PostgresService:
             f"WHERE datname = {quote_literal(name)} "
             "AND pid <> pg_backend_pid()",
         )
+
+    def drop_db(self, conf: OdooConf, name: str) -> None:
+        """Terminates open connections first, then drops."""
+        self._terminate_connections(conf, name)
         try:
             self.runner.run(["dropdb", name], extra_env=self.env(conf))
         except ProcessError as exc:

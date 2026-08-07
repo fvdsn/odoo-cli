@@ -80,7 +80,7 @@ class Services:
 
     @cached_property
     def database(self) -> DatabaseService:
-        return DatabaseService(self.postgres, self.odoo_bin, self.process)
+        return DatabaseService(self.postgres, self.odoo_bin, self.process, venvs=self.venvs)
 
     @cached_property
     def server(self) -> ServerService:

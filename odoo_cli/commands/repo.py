@@ -18,17 +18,23 @@ def repo() -> None:
 @click.argument("name")
 @click.argument("url")
 @click.option("--full", is_flag=True, help="Complete clone instead of blobless.")
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable outcome.")
 @click.pass_obj
-def add(ctx: CliContext, name: str, url: str, full: bool) -> None:
+def add(ctx: CliContext, name: str, url: str, full: bool, as_json: bool) -> None:
     """Clone an additional addon repository into the workspace.
 
     Adding a repository does not modify existing worktrees; check it out
     with `odoo worktree create --addon`.
     """
+    if as_json:
+        ctx.output.json_mode = True
     workspace = ctx.services.workspace.resolve()
     mode = ctx.services.repositories.clone_mode(full)
     ctx.output.echo(f"Cloning {name} ({mode})...")
     spec = ctx.services.repositories.add(workspace, name, url, full=full)
+    if as_json:
+        ctx.output.json({"repository": spec.name, "url": spec.url, "mode": mode})
+        return
     ctx.output.success(f"added repository {spec.name} ({spec.url})")
 
 
@@ -47,6 +53,7 @@ def add(ctx: CliContext, name: str, url: str, full: bool) -> None:
     metavar="WORKTREE",
     help="Add only to the listed worktrees (repeatable).",
 )
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable outcome.")
 @click.pass_obj
 def enable(
     ctx: CliContext,
@@ -54,6 +61,7 @@ def enable(
     url: str | None,
     future_only: bool,
     to: tuple[str, ...],
+    as_json: bool,
 ) -> None:
     """Enable a built-in optional repository (enterprise, themes, upgrade).
 
@@ -61,6 +69,8 @@ def enable(
     incompatible versions are skipped with a warning.
     """
     services, out = ctx.services, ctx.output
+    if as_json:
+        out.json_mode = True
     if name not in OPTIONAL_REPOS:
         raise RepositoryNotFound(
             f"'{name}' is not an optional built-in repository",
@@ -104,6 +114,19 @@ def enable(
             else:
                 skipped.append((wt_name, result.reason))
 
+    if as_json:
+        out.json(
+            {
+                "repository": name,
+                "action": past,
+                "added_to": added,
+                "skipped": [
+                    {"worktree": wt_name, "reason": reason}
+                    for wt_name, reason in skipped
+                ],
+            }
+        )
+        return
     out.success(f"{name} {past}")
     if added:
         out.echo(f"added to: {', '.join(added)}")

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from odoo_cli.core import external_deps
 from odoo_cli.core.database import DatabaseService
 from odoo_cli.core.errors import ProcessFailed
 from odoo_cli.core.models import Target
@@ -48,5 +49,15 @@ class ShellService:
     def _command(self, target: Target):
         venv = self.venvs.ensure(target.workspace, target.worktree)
         python = self.venvs.python_path(venv.path)
-        self.database.ensure_initialized(target, python=python)
+        if not self.database.ensure_initialized(target, python=python):
+            # existing database: its installed modules load at boot, so their
+            # declared deps must be importable (a fresh db is base-only)
+            installed = [
+                m for m in self.database.installed_modules(target) if m != "base"
+            ]
+            if installed:
+                external_deps.ensure_module_deps(
+                    self.venvs, self.runner, target.worktree, installed,
+                    venv.path, python,
+                )
         return self.odoo_bin.shell(target, python=python)

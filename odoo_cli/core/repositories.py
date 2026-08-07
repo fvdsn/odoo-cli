@@ -23,6 +23,7 @@ from odoo_cli.core.errors import (
 )
 from odoo_cli.core.models import INTERNAL_DIRS, RepositorySpec, Workspace
 from odoo_cli.util.git import Git
+from odoo_cli.util.locks import file_lock
 from odoo_cli.util.process import ProcessError
 
 
@@ -185,7 +186,20 @@ class RepositoryService:
         Interruption-safe ordering: clone into a temp dir first, swap the old
         repo aside and the new one in with two renames, and delete the old
         copy only at the end. The slow deletions never sit between the user
-        and a usable repository."""
+        and a usable repository. Serialized per repository: two concurrent
+        replaces would otherwise cross their swap renames and delete each
+        other's fresh clone."""
+        with file_lock(workspace.repositories_dir / f".{name}.lock"):
+            return self._replace_with_clone(workspace, name, url, full=full)
+
+    def _replace_with_clone(
+        self,
+        workspace: Workspace,
+        name: str,
+        url: str | None,
+        *,
+        full: bool,
+    ) -> RepositorySpec:
         path = workspace.repositories_dir / f"{name}.git"
         resolved_url = url
         if resolved_url is None and path.is_dir():

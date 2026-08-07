@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
+from odoo_cli.core import external_deps
 from odoo_cli.core.errors import StreamedProcessExit
 
 
@@ -37,6 +38,18 @@ def start(
 
     if services.database.ensure_initialized(target, python=python):
         out.echo(f"Initialized empty database {target.database}")
+    else:
+        # existing database: the modules it has installed load at boot, so
+        # their manifest-declared python deps must be importable (a venv
+        # rebuild may have lost them); a fresh db is base-only, nothing to do
+        installed = [
+            m for m in services.database.installed_modules(target) if m != "base"
+        ]
+        if installed:
+            external_deps.ensure_module_deps(
+                services.venvs, services.process, target.worktree, installed,
+                venv.path, python,
+            )
     if not services.database.installed_applications(target):
         out.hint(
             f"no app is installed in {target.database} yet; install one with "

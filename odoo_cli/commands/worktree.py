@@ -1,17 +1,60 @@
-"""`odoo worktree create` and `odoo worktree remove`."""
+"""`odoo worktree create`, `odoo worktree remove`, `odoo worktree list`."""
 
 from __future__ import annotations
 
 from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext
 from odoo_cli.core import agent_assets
-from odoo_cli.core.errors import VersionNotFound
-from odoo_cli.core.worktrees import infer_base_version
+from odoo_cli.core.errors import OdooCliError, VersionNotFound
+from odoo_cli.core.worktrees import discover, infer_base_version
 
 
 @click.group()
 def worktree() -> None:
     """Worktree operations."""
+
+
+@worktree.command(name="list")
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable output.")
+@click.pass_obj
+def list_(ctx: CliContext, as_json: bool) -> None:
+    """List the workspace's worktrees."""
+    services, out = ctx.services, ctx.output
+    if as_json:
+        out.json_mode = True
+    workspace = services.workspace.resolve()
+
+    entries = []
+    for wt in discover(workspace):
+        try:
+            version: str | None = services.worktrees.detect_version(wt)
+        except (OdooCliError, OSError):
+            version = None  # broken checkout still deserves a row
+        entries.append(
+            {
+                "name": wt.name,
+                "path": str(wt.path),
+                "linked_from": wt.linked_from,
+                "version": version,
+                "valid": services.worktrees.is_valid(wt),
+                "repos": services.worktrees.checkouts(wt),
+            }
+        )
+
+    if as_json:
+        out.json({"worktrees": entries})
+        return
+    if not entries:
+        out.echo("no worktrees")
+        return
+    for entry in entries:
+        notes = []
+        if entry["linked_from"]:
+            notes.append(f"linked from {entry['linked_from']}")
+        if not entry["valid"]:
+            notes.append("invalid")
+        suffix = f" ({', '.join(notes)})" if notes else ""
+        out.echo(f"{entry['name']}  {entry['version'] or '?'}  {entry['path']}{suffix}")
 
 
 @worktree.command()
@@ -31,6 +74,7 @@ def worktree() -> None:
     help="Check out an added repository at the worktree root (repeatable, "
     "requires --linked).",
 )
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable outcome.")
 @click.pass_obj
 def create(
     ctx: CliContext,
@@ -38,6 +82,7 @@ def create(
     source: str | None,
     linked: bool,
     addons: tuple[str, ...],
+    as_json: bool,
 ) -> None:
     """Create worktree NAME from SOURCE.
 
@@ -55,6 +100,8 @@ def create(
     --linked`); only --addon repositories get real checkouts.
     """
     services, out = ctx.services, ctx.output
+    if as_json:
+        out.json_mode = True
     if addons and not linked:
         raise click.UsageError("--addon requires --linked")
     if linked and source is None:
@@ -107,11 +154,27 @@ def create(
         out.warn(warning)
 
     out.echo("Setting up the virtual environment...")
-    services.venvs.ensure(workspace, result.worktree)
+    venv = services.venvs.ensure(workspace, result.worktree)
     try:  # best-effort: a thin AGENTS.md for an agent started in this worktree
         agent_assets.write_worktree_docs(result.worktree)
     except OSError as exc:
         out.warn(f"could not write agent context: {exc}")
+    if as_json:
+        out.json(
+            {
+                "worktree": name,
+                "path": str(result.worktree.path),
+                "existed": result.existed,
+                "linked": list(result.linked),
+                "checked_out": list(result.checked_out),
+                "skipped": [
+                    {"repository": s.name, "reason": s.reason} for s in result.skipped
+                ],
+                "warnings": list(result.warnings),
+                "venv": str(venv.path),
+            }
+        )
+        return
     out.success(f"worktree {name} ready at {result.worktree.path}")
     out.echo(f"Next: cd {result.worktree.path} && odoo start")
 
@@ -136,6 +199,7 @@ def create(
     is_flag=True,
     help="Remove everything: implies --drop-db --delete-branches --force.",
 )
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable outcome.")
 @click.pass_obj
 def remove(
     ctx: CliContext,
@@ -144,6 +208,7 @@ def remove(
     delete_branches: bool,
     force: bool,
     purge: bool,
+    as_json: bool,
 ) -> None:
     """Remove worktree NAME.
 
@@ -157,6 +222,8 @@ def remove(
     still refuses on linked dependents (remove those first).
     """
     services, out = ctx.services, ctx.output
+    if as_json:
+        out.json_mode = True
     if purge:
         drop_db = delete_branches = force = True
     workspace = services.workspace.resolve()
@@ -167,6 +234,16 @@ def remove(
         delete_branches=delete_branches,
         force=force,
     )
+    if as_json:
+        out.json(
+            {
+                "worktree": name,
+                "removed_path": str(result.removed_path),
+                "deleted_branches": list(result.deleted_branches),
+                "dropped_databases": list(result.dropped_databases),
+            }
+        )
+        return
     for branch in result.deleted_branches:
         out.echo(f"deleted branch {branch}")
     for db in result.dropped_databases:

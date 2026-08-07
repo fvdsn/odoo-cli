@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from odoo_cli.core.addons import resolve_addons_paths
+from odoo_cli.core import external_deps
 from odoo_cli.core.database import DatabaseService
 from odoo_cli.core.errors import OdooCliError
 from odoo_cli.core.models import Target
@@ -32,12 +32,15 @@ class TestingService:
         self.runner = runner
 
     def run(self, target: Target, module_spec: str, tags: list[str]) -> None:
-        """`module_spec`: a module name, `installed` (modules installed in
-        the target database), or `all`."""
+        """`module_spec`: a module name (comma-separable) or `installed`
+        (modules installed in the target database)."""
         venv = self.venvs.ensure(target.workspace, target.worktree)
         python = self.venvs.python_path(venv.path)
 
         modules = self._resolve_modules(target, module_spec, python=python)
+        external_deps.ensure_module_deps(
+            self.venvs, self.runner, target.worktree, modules, venv.path, python
+        )
         conf = target.workspace.config
         if not self.database.postgres.db_exists(conf, target.test_database):
             self.database.postgres.create_db(conf, target.test_database)
@@ -56,22 +59,9 @@ class TestingService:
                 m for m in self.database.installed_modules(target) if m != "base"
             ] or ["base"]
         if spec == "all":
-            return self._all_modules(target)
-        return [m for m in spec.split(",") if m]
-
-    def _all_modules(self, target: Target) -> list[str]:
-        """Every addon in the resolved addons paths (odoo-bin has no literal
-        'all' for -i, so the CLI enumerates)."""
-        modules: set[str] = set()
-        for path in resolve_addons_paths(target.worktree):
-            if not path.is_dir():
-                continue
-            for child in path.iterdir():
-                if child.is_dir() and (child / "__manifest__.py").is_file():
-                    modules.add(child.name)
-        if not modules:
+            # removed: installing every addon takes hours; nobody ran it
             raise OdooCliError(
-                "no addons found in the resolved addons paths",
-                hint="check `odoo where` for the paths being scanned",
+                "`odoo test all` was removed",
+                hint="name modules (`odoo test crm,sale`) or use `odoo test installed`",
             )
-        return sorted(modules)
+        return [m for m in spec.split(",") if m]
