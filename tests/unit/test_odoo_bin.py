@@ -178,6 +178,13 @@ class TestTests(OdooBinTestCase):
         # dev_mode from odoo.conf must never leak into test runs: dev
         # reload/xml modes change caching and fail assertQueries suites
         self.assertEqual(cmd.argv[cmd.argv.index("--dev") + 1], "none")
+        # crons off (runbot parity): their jobs would mutate state mid-test
+        self.assertEqual(cmd.argv[cmd.argv.index("--max-cron-threads") + 1], "0")
+        # test results and phase markers stay visible despite log_level=warn
+        handlers = [cmd.argv[i + 1] for i, a in enumerate(cmd.argv)
+                    if a == "--log-handler"]
+        self.assertIn("odoo.tests:INFO", handlers)
+        self.assertIn("odoo.service.server:INFO", handlers)
 
     def test_tag_resolution(self):
         target = self.target()

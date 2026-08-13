@@ -174,8 +174,17 @@ class OdooBinService:
             argv += ["-u", ",".join(update)]
         # tests never inherit odoo.conf's dev_mode: dev reload/xml modes
         # change caching and query shapes, failing e.g. assertQueries suites
-        # wholesale (runbot semantics are dev-off)
-        argv += ["--stop-after-init", "--dev", "none"]
+        # wholesale (runbot semantics are dev-off). Crons are disabled the
+        # way runbot does it: the HttpCase server would otherwise spawn cron
+        # workers whose jobs (mail queue, autovacuum) mutate state mid-test.
+        argv += [
+            "--stop-after-init", "--dev", "none", "--max-cron-threads", "0",
+        ]
+        # the shared conf's log_level=warn would swallow test results and
+        # the at_install/post_install phase markers; surface exactly those
+        for handler in ("odoo.tests:INFO", "odoo.modules.loading:INFO",
+                        "odoo.service.server:INFO"):
+            argv += ["--log-handler", handler]
         test_tags = [self._test_tag(t) for t in (tags or [])]
         if test_tags:
             argv += ["--test-tags", ",".join(test_tags)]
