@@ -7,7 +7,7 @@ from odoo_cli.core.models import Target, Workspace, Worktree
 from odoo_cli.core.odoo_bin import OdooBinService
 from odoo_cli.core.odoo_conf import OdooConf
 from odoo_cli.core.postgres import PostgresService
-from tests.fixtures.process import FakeProcessRunner
+from tests.fixtures.process import FakeProcessRunner, createdb_call
 from tests.fixtures.workspace import make_env, make_workspace, make_worktree
 
 MODULES_SQL = "SELECT name FROM ir_module_module WHERE state = 'installed'"
@@ -54,12 +54,44 @@ class DatabaseTestCase(unittest.TestCase):
 
 class TestEnsureInitialized(DatabaseTestCase):
     def test_creates_missing_database(self):
+        # 19+: creation and init are odoo-bin's own `db init` in one run,
+        # so its creation semantics (collation, template) stay odoo's
         self.db_exists(False)
-        self.runner.expect("createdb", stdout="")
         created = self.service.ensure_initialized(self.target, python=self.python)
         self.assertTrue(created)
-        self.assertIn(("createdb", "19.0"), self.runner.calls)
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
         # the init run is streamed: its output goes to the terminal live
+        init_call = self.runner.stream_calls[-1]
+        self.assertIn("db", init_call)
+        # no --with-demo: an absent without_demo means no demo since 19
+        self.assertEqual(init_call[init_call.index("init") + 1], "19.0")
+
+    def test_native_init_maps_demo_from_conf(self):
+        # `db init` ignores odoo.conf's without_demo, so the conf's intent
+        # (the `odoo init` default "False" = demo on) is passed explicitly
+        self.target.workspace.config.set("without_demo", "False")
+        self.db_exists(False)
+        self.service.ensure_initialized(self.target, python=self.python)
+        init_call = self.runner.stream_calls[-1]
+        self.assertIn("--with-demo", init_call)
+        self.assertEqual(init_call[init_call.index("init") + 1], "--with-demo")
+
+    def test_pre_19_polyfill_creates_then_installs_base(self):
+        make_worktree(self.root, "18.0", version="18.0")
+        target = Target(
+            workspace=self.target.workspace,
+            worktree=Worktree(name="18.0", path=self.root / "18.0"),
+            database="18.0",
+        )
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = '18.0'",
+            stdout="",
+        )
+        self.runner.expect("createdb", stdout="")
+        created = self.service.ensure_initialized(target, python=self.python)
+        self.assertTrue(created)
+        self.assertIn(createdb_call("18.0"), self.runner.calls)
         init_call = self.runner.stream_calls[-1]
         self.assertIn("--stop-after-init", init_call)
         self.assertIn("--no-http", init_call)
@@ -96,7 +128,6 @@ class TestReset(DatabaseTestCase):
         self.runner.expect("psql", "--no-psqlrc", "-tAc", MODULES_SQL,
                            stdout="base\ncrm\nsale\n")
         self.runner.expect("dropdb", stdout="", effect=self._drop_effect)
-        self.runner.expect("createdb", stdout="")
         reinstalled = self.service.reset(self.target, python=self.python)
         self.assertEqual(reinstalled, ["crm", "sale"])  # base excluded
         flat = [" ".join(c) for c in self.runner.calls]
@@ -111,7 +142,6 @@ class TestReset(DatabaseTestCase):
         self.runner.expect("psql", "--no-psqlrc", "-tAc", MODULES_SQL,
                            stdout="base\n")
         self.runner.expect("dropdb", stdout="", effect=self._drop_effect)
-        self.runner.expect("createdb", stdout="")
         reinstalled = self.service.reset(self.target, python=self.python)
         self.assertEqual(reinstalled, [])
         self.assertEqual(len(self.runner.stream_calls), 1)  # init, no reinstall
@@ -123,7 +153,6 @@ class TestReset(DatabaseTestCase):
         self.db_exists(True)
         self.base_installed(None)
         self.runner.expect("dropdb", stdout="", effect=self._drop_effect)
-        self.runner.expect("createdb", stdout="")
         reinstalled = self.service.reset(self.target, python=self.python)
         self.assertEqual(reinstalled, [])
         self.assertEqual(len(self.runner.stream_calls), 1)  # fresh init only

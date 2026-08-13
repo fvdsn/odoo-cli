@@ -6,7 +6,7 @@ from odoo_cli.cli._click import testing
 from odoo_cli.cli.context import CliContext, Services
 from odoo_cli.cli.main import cli
 from odoo_cli.core.venvs import READY_MARKER
-from tests.fixtures.process import FakeProcessRunner
+from tests.fixtures.process import FakeProcessRunner, createdb_call
 from tests.fixtures.workspace import make_env, make_workspace, make_worktree
 
 
@@ -25,7 +25,14 @@ class TestShellCommandsTestCase(unittest.TestCase):
         (venv / "bin" / "python").write_text("")
         (venv / READY_MARKER).touch()
         self.python = str(venv / "bin" / "python")
+        # data_dir under the temp home: the test-db recreation removes the
+        # test filestore and must never look at the real one
+        conf = self.home / ".config" / "odoo" / "odoo.conf"
+        conf.parent.mkdir(parents=True)
+        conf.write_text(f"[options]\ndata_dir = {self.home / 'odoo-data'}\n")
         self.runner.expect("psql", stdout="1\n")
+        self.runner.expect("dropdb", stdout="")
+        self.runner.expect("createdb", stdout="")
         self.runner.expect(self.python, stdout="")
 
     def invoke(self, *args):
@@ -42,6 +49,10 @@ class TestTestCommand(TestShellCommandsTestCase):
         self.assertIn("crm", argv[argv.index("-i") + 1])
         self.assertIn("--test-enable", argv)
         self.assertIn("tests passed", result.output)
+        # the leftover test db (broad psql: exists) was recreated, so the
+        # run starts from a schema matching exactly the modules it loads
+        self.assertIn(("dropdb", "19.0-test"), self.runner.calls)
+        self.assertIn(createdb_call("19.0-test"), self.runner.calls)
 
     def test_creates_missing_test_database(self):
         self.runner.expect(
@@ -52,9 +63,26 @@ class TestTestCommand(TestShellCommandsTestCase):
         self.runner.expect("createdb", stdout="")
         result = self.invoke("test", "crm")
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertIn(("createdb", "19.0-test"), self.runner.calls)
+        self.assertIn(createdb_call("19.0-test"), self.runner.calls)
 
-    def test_installed_spec_reads_database(self):
+    def test_keep_db_rerun_updates_modules_in_test_db(self):
+        # the installed-modules expectation matches both the target db and
+        # the kept test db: everything is already in the test db, so the
+        # rerun must go through -u — with -i odoo-bin would install nothing
+        # and run 0 tests (the second `odoo test installed` regression)
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT name FROM ir_module_module WHERE state = 'installed'",
+            stdout="base\ncrm\nsale\n",
+        )
+        result = self.invoke("test", "installed", "--keep-db")
+        self.assertEqual(result.exit_code, 0, result.output)
+        argv = self.runner.stream_calls[0]
+        self.assertEqual(argv[argv.index("-u") + 1], "crm,sale")
+        self.assertNotIn("-i", argv)
+        self.assertFalse(any(c[0] == "dropdb" for c in self.runner.calls))
+
+    def test_installed_spec_installs_into_fresh_test_db(self):
         self.runner.expect(
             "psql", "--no-psqlrc", "-tAc",
             "SELECT name FROM ir_module_module WHERE state = 'installed'",
@@ -64,6 +92,7 @@ class TestTestCommand(TestShellCommandsTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         argv = self.runner.stream_calls[0]
         self.assertEqual(argv[argv.index("-i") + 1], "crm,sale")
+        self.assertNotIn("-u", argv)
 
     def test_installed_spec_initializes_missing_database(self):
         # right after `odoo init` the target database may not exist yet;
@@ -73,7 +102,6 @@ class TestTestCommand(TestShellCommandsTestCase):
             "SELECT 1 FROM pg_database WHERE datname = '19.0'",
             stdout="",
         )
-        self.runner.expect("createdb", stdout="")
         self.runner.expect(
             "psql", "--no-psqlrc", "-tAc",
             "SELECT name FROM ir_module_module WHERE state = 'installed'",
@@ -81,9 +109,10 @@ class TestTestCommand(TestShellCommandsTestCase):
         )
         result = self.invoke("test", "installed")
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertIn(("createdb", "19.0"), self.runner.calls)
-        argv = self.runner.stream_calls[-1]  # db init streams first
-        self.assertEqual(argv[argv.index("-i") + 1], "base")
+        # 19+: creation and init are odoo-bin's own `db init` in one run
+        init_run = self.runner.stream_calls[0]
+        self.assertIn("init", init_run)
+        self.assertEqual(init_run[init_run.index("init") + 1], "19.0")
 
     def test_all_spec_was_removed(self):
         result = self.invoke("test", "all")

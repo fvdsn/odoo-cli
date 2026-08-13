@@ -30,13 +30,31 @@ def is_set(value: str | None) -> bool:
     """Odoo's convention: the string "False" (or nothing) means unset."""
     return bool(value) and value != "False"
 
+
+#: odoo's `_check_bool` falsy spellings (tools/config.py).
+_FALSE_VALUES = frozenset({"0", "no", "false", "off"})
+
+
+def demo_enabled(conf: OdooConf | None) -> bool:
+    """Whether odoo-bin installs demo data in a new database under this conf.
+
+    Mirrors odoo >= 19: demo is off by default; conf's `without_demo` is
+    parsed with `_check_bool` and inverted into with_demo. So only an
+    explicit falsy `without_demo` (the `odoo init` default "False") enables
+    demo. Callers of `db init` need this spelled out because that subcommand
+    only honors its own `--with-demo` flag, never the conf."""
+    if conf is None:
+        return False
+    value = conf.get("without_demo")
+    return value is not None and value.strip().lower() in _FALSE_VALUES
+
 #: Defaults written by `odoo init` (usecase.md §1) and the keys init reports
-#: as missing when the file already exists.
+#: as missing when the file already exists. The postgres connection keys
+#: (db_host, db_port, db_user, db_password) are deliberately not written:
+#: absent already means "local defaults", and odoo-bin warns on every run
+#: about non-boolean options holding the literal string "False". They are
+#: added by `odoo config set` (or init's port detection) when needed.
 DEFAULTS: dict[str, str] = {
-    "db_host": "False",
-    "db_port": "False",
-    "db_user": "False",
-    "db_password": "False",
     "dev_mode": "all",
     "without_demo": "False",
     "log_level": "warn",

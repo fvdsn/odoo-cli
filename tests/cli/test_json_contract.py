@@ -61,7 +61,8 @@ class TestWhereJson(JsonContractTestCase):
         self.assertEqual(data["python"], self.python)
         self.assertEqual(data["odoo_bin"], str(odoo_dir / "odoo-bin"))
         self.assertEqual(data["cwd"], str(odoo_dir))
-        self.assertEqual(data["env"], {})
+        # consumers replaying the command need the venv-activation PATH too
+        self.assertEqual(data["env"], {"PATH": str(Path(self.python).parent)})
         self.assertEqual(data["command"][0], self.python)
         # unset conf keys surface as null, matching Odoo's "False is unset"
         self.assertEqual(

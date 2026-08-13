@@ -13,6 +13,15 @@ from pathlib import Path
 from odoo_cli.util.process import ProcessError, ProcessResult
 
 
+def createdb_call(name: str) -> tuple[str, ...]:
+    """The exact argv `PostgresService.create_db` runs: odoo's own creation
+    semantics (encoding, C collation, template0)."""
+    return (
+        "createdb", "--encoding=UTF8", "--lc-collate=C",
+        "--template=template0", name,
+    )
+
+
 class FakeProcessRunner:
     def __init__(self):
         self.calls: list[tuple[str, ...]] = []

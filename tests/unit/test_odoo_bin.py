@@ -49,6 +49,14 @@ class TestCapabilities(unittest.TestCase):
         self.assertTrue(capabilities_for("20.0").native_module_install)
         self.assertTrue(capabilities_for("saas-20.1").native_module_install)
 
+    def test_native_db_init(self):
+        # `odoo-bin db init` first shipped in 19.0 (17/18 have `db` but
+        # no init subcommand)
+        for version in ("17.0", "18.0"):
+            self.assertFalse(capabilities_for(version).native_db_init)
+        for version in ("19.0", "saas-19.4", "20.0"):
+            self.assertTrue(capabilities_for(version).native_db_init)
+
     def test_unsupported_version(self):
         for version in ("16.0", "15.0", "saas-16.4"):
             with self.assertRaises(UnsupportedOdooVersion):
@@ -67,8 +75,18 @@ class TestServerStart(OdooBinTestCase):
             + ["--http-port", "8069", "--gevent-port", "8072"],
         )
         self.assertEqual(cmd.cwd, target.worktree.path / "odoo")
-        self.assertEqual(cmd.env, {})
+        # venv bin on PATH, as activation would do: odoo shells out to
+        # venv-installed executables (pylint, ...) via PATH lookup
+        self.assertEqual(cmd.env, {"PATH": "/venvs/19.0/bin"})
         self.assertEqual(cmd.redacted_argv, cmd.argv)
+
+    def test_venv_bin_prepended_to_existing_path(self):
+        service = OdooBinService(make_env(self.home, PATH="/usr/bin:/bin"))
+        target = self.target()
+        cmd = service.server_start(
+            target, python=self.python, ports=Ports(http=8069, gevent=8072)
+        )
+        self.assertEqual(cmd.env["PATH"], "/venvs/19.0/bin:/usr/bin:/bin")
 
     def test_prod_disables_dev_mode(self):
         target = self.target()
@@ -94,6 +112,24 @@ class TestDbInit(OdooBinTestCase):
             self.bin_prefix(target) + self.base(target)
             + ["-i", "base", "--stop-after-init", "--no-http"],
         )
+
+
+class TestDbCreateInit(OdooBinTestCase):
+    def test_argv(self):
+        # the `db` command takes no -d (positional database) and no ports
+        target = self.target()
+        cmd = self.service.db_create_init(target, python=self.python, demo=False)
+        addons = str(target.worktree.path / "odoo" / "addons")
+        self.assertEqual(
+            cmd.argv,
+            self.bin_prefix(target)
+            + ["db", "-c", self.conf, "--addons-path", addons, "init", "wt"],
+        )
+
+    def test_demo_flag(self):
+        target = self.target()
+        cmd = self.service.db_create_init(target, python=self.python, demo=True)
+        self.assertEqual(cmd.argv[-2:], ["--with-demo", "wt"])
 
 
 class TestModuleInstall(OdooBinTestCase):
@@ -139,16 +175,34 @@ class TestTests(OdooBinTestCase):
         self.assertEqual(cmd.argv[cmd.argv.index("-d") + 1], "wt-test")
         self.assertIn("--test-enable", cmd.argv)
         self.assertNotIn("--no-http", cmd.argv)  # HttpCase needs http
+        # dev_mode from odoo.conf must never leak into test runs: dev
+        # reload/xml modes change caching and fail assertQueries suites
+        self.assertEqual(cmd.argv[cmd.argv.index("--dev") + 1], "none")
 
     def test_tag_resolution(self):
         target = self.target()
         cmd = self.service.tests(
-            target, ["crm"], ["test_lead_creation", "at_install"],
+            target, ["crm"], tags=["test_lead_creation", "at_install"],
             python=self.python,
         )
         tags = cmd.argv[cmd.argv.index("--test-tags") + 1]
         self.assertEqual(tags, ".test_lead_creation,at_install")
         self.assertNotIn("--test-enable", cmd.argv)
+
+    def test_reused_database_modules_are_updated(self):
+        # odoo-bin runs tests only for modules installed/updated in this
+        # very process: already-present modules must go through -u, -i
+        # would silently skip them
+        target = self.target()
+        cmd = self.service.tests(target, ["sale"], ["crm"], python=self.python)
+        self.assertEqual(cmd.argv[cmd.argv.index("-i") + 1], "sale")
+        self.assertEqual(cmd.argv[cmd.argv.index("-u") + 1], "crm")
+
+    def test_all_modules_present_updates_only(self):
+        target = self.target()
+        cmd = self.service.tests(target, [], ["crm", "sale"], python=self.python)
+        self.assertNotIn("-i", cmd.argv)
+        self.assertEqual(cmd.argv[cmd.argv.index("-u") + 1], "crm,sale")
 
 
 class TestShell(OdooBinTestCase):

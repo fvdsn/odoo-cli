@@ -15,6 +15,7 @@ from odoo_cli.core import external_deps, filestore
 from odoo_cli.core.errors import DatabaseExists, DatabaseNotFound, PostgresError
 from odoo_cli.core.models import Target, Workspace
 from odoo_cli.core.odoo_bin import OdooBinService, run_streamed
+from odoo_cli.core.odoo_conf import demo_enabled
 from odoo_cli.core.postgres import PostgresService
 from odoo_cli.core.repositories import validate_name
 from odoo_cli.util.locks import file_lock
@@ -50,9 +51,20 @@ class DatabaseService:
         lock = target.workspace.run_dir / f".init-{target.database}.lock"
         with file_lock(lock):
             if not self.postgres.db_exists(conf, target.database):
+                if self.odoo_bin.capabilities(target).native_db_init:
+                    # reuse odoo's own creation+init (`db init`) when it
+                    # exists; demo comes from the conf, as the polyfill's
+                    # `-i base` run would read it
+                    command = self.odoo_bin.db_create_init(
+                        target, python=python, demo=demo_enabled(conf)
+                    )
+                    run_streamed(self.runner, command)
+                    return True
                 self.postgres.create_db(conf, target.database)
             elif self.is_initialized(target):
                 return False
+            # polyfill, also the healing path: a db left behind by a crash
+            # between creation and base install exists but has no registry
             command = self.odoo_bin.db_init(target, python=python)
             run_streamed(self.runner, command)
             return True
@@ -131,11 +143,25 @@ class DatabaseService:
             return []
         return [m for m in self.installed_modules(target) if m != "base"]
 
+    def drop(self, workspace: Workspace, name: str) -> bool:
+        """Drop database `name` and its filestore. True when the db existed."""
+        conf = workspace.config
+        if not self.postgres.db_exists(conf, name):
+            return False
+        self.postgres.drop_db(conf, name)
+        store = filestore.filestore_path(conf, name)
+        if store.is_dir():
+            shutil.rmtree(store)
+        return True
+
     def installed_modules(self, target: Target) -> list[str]:
         """The set `db reset` reinstalls; the database is the source of truth."""
+        return self.installed_modules_in(target.workspace.config, target.database)
+
+    def installed_modules_in(self, conf, database: str) -> list[str]:
         rows = self.postgres.sql(
-            target.workspace.config,
-            target.database,
+            conf,
+            database,
             "SELECT name FROM ir_module_module WHERE state = 'installed'",
         )
         return sorted(rows)

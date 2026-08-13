@@ -70,10 +70,11 @@ class TestStart(CommandTestCase):
         result = self.invoke("start")
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("Initialized empty database", result.output)
-        self.assertIn(("createdb", "19.0"), self.runner.calls)
-        # the init run is streamed (live output), then the server itself
+        # the init run is streamed (live output), then the server itself;
+        # on 19+ creation and init are odoo-bin's own `db init` in one run
         init_run, server_run = self.runner.stream_calls
-        self.assertIn("--stop-after-init", init_run)
+        self.assertIn("init", init_run)
+        self.assertEqual(init_run[init_run.index("init") + 1], "19.0")
         self.assertNotIn("--stop-after-init", server_run)
 
     def test_start_hints_when_no_app_installed(self):

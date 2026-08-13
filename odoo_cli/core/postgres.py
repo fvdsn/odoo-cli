@@ -285,8 +285,19 @@ class PostgresService:
         return bool(rows)
 
     def create_db(self, conf: OdooConf, name: str) -> None:
+        """Create an empty database the way odoo itself does (service/db.py:
+        `ENCODING 'unicode' LC_COLLATE 'C' TEMPLATE template0`). C collation
+        matters: it is deterministic across OSes and lets plain B-tree
+        indexes serve LIKE-prefix searches; a bare `createdb` would inherit
+        the cluster locale and sort differently than an odoo-created db."""
         try:
-            self.runner.run(["createdb", name], extra_env=self.env(conf))
+            self.runner.run(
+                [
+                    "createdb", "--encoding=UTF8", "--lc-collate=C",
+                    "--template=template0", name,
+                ],
+                extra_env=self.env(conf),
+            )
         except ProcessError as exc:
             raise PostgresError(
                 f"could not create database '{name}'",

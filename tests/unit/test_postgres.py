@@ -5,7 +5,7 @@ from pathlib import Path
 from odoo_cli.core.errors import PostgresError
 from odoo_cli.core.odoo_conf import OdooConf
 from odoo_cli.core.postgres import PostgresService
-from tests.fixtures.process import FakeProcessRunner
+from tests.fixtures.process import FakeProcessRunner, createdb_call
 
 
 class PostgresTestCase(unittest.TestCase):
@@ -70,6 +70,13 @@ class TestDatabases(PostgresTestCase):
         self.assertTrue(self.service.db_exists(self.conf, "x"))
         self.runner.expect("psql", stdout="\n")
         self.assertFalse(self.service.db_exists(self.conf, "x"))
+
+    def test_create_db_matches_odoo_creation_semantics(self):
+        # same CREATE DATABASE as odoo/service/db.py: a bare `createdb`
+        # would inherit the cluster locale and sort unlike an odoo db
+        self.runner.expect("createdb", stdout="")
+        self.service.create_db(self.conf, "x")
+        self.assertIn(createdb_call("x"), self.runner.calls)
 
     def test_create_db_failure_is_typed(self):
         self.runner.expect("createdb", returncode=1, stderr="permission denied")

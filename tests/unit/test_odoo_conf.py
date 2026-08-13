@@ -2,7 +2,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from odoo_cli.core.odoo_conf import DEFAULTS, REDACTED, OdooConf, write_defaults
+from odoo_cli.core.odoo_conf import (
+    DEFAULTS,
+    REDACTED,
+    OdooConf,
+    demo_enabled,
+    write_defaults,
+)
 
 
 class TestOdooConf(unittest.TestCase):
@@ -23,6 +29,10 @@ class TestOdooConf(unittest.TestCase):
         self.assertEqual(conf.get("dev_mode"), "all")
         self.assertEqual(conf.get("log_level"), "warn")
         self.assertEqual(conf.missing_defaults(), [])
+        # unset postgres keys are omitted, not written as the literal
+        # "False": odoo-bin warns about those on every run
+        self.assertIsNone(conf.get("db_host"))
+        self.assertIsNone(conf.get("db_password"))
 
     def test_set_preserves_unknown_keys(self):
         self.path.parent.mkdir(parents=True)
@@ -67,3 +77,24 @@ class TestOdooConf(unittest.TestCase):
         self.assertEqual(conf.items(reveal=True)["db_password"], "hunter2")
         # get() is the explicit reveal path
         self.assertEqual(conf.get("db_password"), "hunter2")
+
+
+class TestDemoEnabled(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.conf = OdooConf.load(Path(self._tmp.name) / "odoo.conf")
+
+    def test_explicit_falsy_without_demo_enables_demo(self):
+        # mirrors odoo's _check_bool falsy spellings, inverted
+        for value in ("False", "false", "0", "no", "off", " False "):
+            self.conf.set("without_demo", value)
+            self.assertTrue(demo_enabled(self.conf), value)
+
+    def test_absent_or_truthy_disables_demo(self):
+        # odoo >= 19 defaults to no demo when the key is absent
+        self.assertFalse(demo_enabled(self.conf))
+        self.assertFalse(demo_enabled(None))
+        for value in ("True", "1", "yes", "on"):
+            self.conf.set("without_demo", value)
+            self.assertFalse(demo_enabled(self.conf), value)
