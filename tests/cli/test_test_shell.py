@@ -81,6 +81,38 @@ class TestTestCommand(TestShellCommandsTestCase):
         self.assertEqual(argv[argv.index("-u") + 1], "crm,sale")
         self.assertNotIn("-i", argv)
         self.assertFalse(any(c[0] == "dropdb" for c in self.runner.calls))
+        # kept modules are fully installed already: only their post_install
+        # tests run correctly there; at_install needs a fresh database
+        self.assertEqual(argv[argv.index("--test-tags") + 1], "post_install")
+        self.assertNotIn("--test-enable", argv)
+
+    def test_keep_db_fresh_modules_keep_both_phases(self):
+        # a module absent from the kept db installs at its graph position,
+        # so its at_install tests remain valid and are selected explicitly
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT name FROM ir_module_module WHERE state = 'installed'",
+            stdout="base\ncrm\n",
+        )
+        result = self.invoke("test", "crm,stock", "--keep-db")
+        self.assertEqual(result.exit_code, 0, result.output)
+        argv = self.runner.stream_calls[0]
+        self.assertEqual(argv[argv.index("-i") + 1], "stock")
+        self.assertEqual(argv[argv.index("-u") + 1], "crm")
+        self.assertEqual(
+            argv[argv.index("--test-tags") + 1], "post_install,at_install/stock"
+        )
+
+    def test_keep_db_explicit_tags_override_phase_filter(self):
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT name FROM ir_module_module WHERE state = 'installed'",
+            stdout="base\ncrm\n",
+        )
+        result = self.invoke("test", "crm", "--keep-db", "-t", "test_lead")
+        self.assertEqual(result.exit_code, 0, result.output)
+        argv = self.runner.stream_calls[0]
+        self.assertEqual(argv[argv.index("--test-tags") + 1], ".test_lead")
 
     def test_installed_spec_installs_into_fresh_test_db(self):
         self.runner.expect(

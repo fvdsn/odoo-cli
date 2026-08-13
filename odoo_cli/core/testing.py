@@ -71,6 +71,16 @@ class TestingService:
         # -u so their tests run again (-i would skip them and run 0 tests)
         install = [m for m in modules if m not in present]
         update = [m for m in modules if m in present]
+        if update and not tags:
+            # a reused test database is already fully installed, which is
+            # exactly the context post_install tests specify — but the wrong
+            # one for at_install tests: they run at the module's position in
+            # the dependency graph, and auto_install dependents (crm ->
+            # crm_sms, iap_crm, ...) sit above the module even in the db the
+            # first run created. So kept modules run only their post_install
+            # tests; freshly installed ones keep both phases. Explicit -t
+            # tags override: the user selected exactly those tests.
+            tags = ["post_install", *(f"at_install/{m}" for m in install)]
         command = self.odoo_bin.tests(target, install, update, tags, python=python)
         run_streamed(self.runner, command)
 

@@ -18,7 +18,9 @@ from odoo_cli.cli.context import CliContext
     "--keep-db",
     is_flag=True,
     help="Reuse an existing test database instead of recreating it: faster "
-    "reruns, but leftover schema/data from a previous run can break tests.",
+    "reruns, but kept modules run only their post_install tests (at_install "
+    "needs the install-time context of a fresh database); explicit -t tags "
+    "override that filter.",
 )
 @click.option("--json", "as_json", is_flag=True, help="Machine-readable outcome.")
 @click.pass_obj
