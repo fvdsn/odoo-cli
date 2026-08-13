@@ -185,6 +185,9 @@ class TestTests(OdooBinTestCase):
                     if a == "--log-handler"]
         self.assertIn("odoo.tests:INFO", handlers)
         self.assertIn("odoo.service.server:INFO", handlers)
+        # hash order reproducibility (runbot image parity)
+        self.assertEqual(cmd.env["PYTHONHASHSEED"], "0")
+        self.assertIn("PATH", cmd.env)  # venv activation still present
 
     def test_tag_resolution(self):
         target = self.target()

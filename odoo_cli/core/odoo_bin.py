@@ -190,7 +190,13 @@ class OdooBinService:
             argv += ["--test-tags", ",".join(test_tags)]
         else:
             argv += ["--test-enable"]
-        return self._command(target, python, argv, purpose="tests")
+        # runbot pins the hash seed (its Docker image sets PYTHONHASHSEED=0)
+        # so dict/set iteration order — and any test depending on it — is
+        # reproducible run to run
+        return self._command(
+            target, python, argv, purpose="tests",
+            extra_env={"PYTHONHASHSEED": "0"},
+        )
 
     def shell(self, target: Target, *, python: Path) -> OdooBinCommand:
         argv = self._base_argv(target, head=["shell"]) + ["--no-http"]
@@ -229,7 +235,13 @@ class OdooBinService:
         ]
 
     def _command(
-        self, target: Target, python: Path, argv: list[str], *, purpose: str
+        self,
+        target: Target,
+        python: Path,
+        argv: list[str],
+        *,
+        purpose: str,
+        extra_env: dict[str, str] | None = None,
     ) -> OdooBinCommand:
         odoo_bin = target.worktree.odoo_path / "odoo-bin"
         full_argv = [str(python), str(odoo_bin), *argv]
@@ -237,7 +249,7 @@ class OdooBinService:
             executable=python,
             argv=full_argv,
             cwd=target.worktree.odoo_path,
-            env=self._venv_path_env(python),
+            env={**self._venv_path_env(python), **(extra_env or {})},
             redacted_argv=list(full_argv),  # argv never carries secrets
             purpose=purpose,
         )
