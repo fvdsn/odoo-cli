@@ -80,7 +80,17 @@ class TestingService:
             # first run created. So kept modules run only their post_install
             # tests; freshly installed ones keep both phases. Explicit -t
             # tags override: the user selected exactly those tests.
-            tags = ["post_install", *(f"at_install/{m}" for m in install)]
+            if not install:
+                # nothing to install: runbot's own post-install batch
+                # pattern — a plain registry load (no -i/-u, so no module
+                # upgrade touching the kept db) runs the post_install suite
+                # of every installed module, scoped here to the requested
+                # ones. With -u odoo-bin would first upgrade the modules,
+                # reloading their data files into the kept database.
+                update = []
+                tags = ["-at_install", *(f"/{m}" for m in modules)]
+            else:
+                tags = ["post_install", *(f"at_install/{m}" for m in install)]
         command = self.odoo_bin.tests(target, install, update, tags, python=python)
         run_streamed(self.runner, command)
 

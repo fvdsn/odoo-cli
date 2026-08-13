@@ -78,13 +78,16 @@ class TestTestCommand(TestShellCommandsTestCase):
         result = self.invoke("test", "installed", "--keep-db")
         self.assertEqual(result.exit_code, 0, result.output)
         argv = self.runner.stream_calls[0]
-        self.assertEqual(argv[argv.index("-u") + 1], "crm,sale")
-        self.assertNotIn("-i", argv)
         self.assertFalse(any(c[0] == "dropdb" for c in self.runner.calls))
         # kept modules are fully installed already: only their post_install
-        # tests run correctly there; at_install needs a fresh database
-        self.assertEqual(argv[argv.index("--test-tags") + 1], "post_install")
-        self.assertNotIn("--test-enable", argv)
+        # tests run correctly there — runbot's own batch pattern, a plain
+        # registry load with neither -i nor -u (no upgrade of the kept db)
+        self.assertNotIn("-i", argv)
+        self.assertNotIn("-u", argv)
+        self.assertEqual(
+            argv[argv.index("--test-tags") + 1], "-at_install,/crm,/sale"
+        )
+        self.assertNotIn("--test-enable", argv)  # --test-tags enables tests
 
     def test_keep_db_fresh_modules_keep_both_phases(self):
         # a module absent from the kept db installs at its graph position,
