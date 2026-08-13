@@ -79,11 +79,52 @@ class TestPull(FetchPullTestCase):
             any(c[-3:] == ("fetch", "origin", "19.0") for c in self.runner.calls)
         )
 
+    def set_ahead(self, checkout, old="oldsha111x", new="newsha222y", related=True):
+        """Script HEAD/FETCH_HEAD shas and their ancestry for a checkout."""
+        self.runner.expect(
+            "git", "-C", str(checkout), "rev-parse", "HEAD", stdout=f"{old}\n"
+        )
+        self.runner.expect(
+            "git", "-C", str(checkout),
+            "rev-parse", "--verify", "--quiet", "FETCH_HEAD", stdout=f"{new}\n",
+        )
+        self.runner.expect(
+            "git", "-C", str(checkout), "merge-base", "--is-ancestor",
+            returncode=0 if related else 1,
+        )
+        if related:
+            # HEAD is behind FETCH_HEAD, not the reverse
+            self.runner.expect(
+                "git", "-C", str(checkout),
+                "merge-base", "--is-ancestor", new, old, returncode=1,
+            )
+
+    def test_pull_advanced_streams_the_merge(self):
+        odoo = self.root / "19.0" / "odoo"
+        self.set_ahead(odoo)
+        result = self.invoke("pull")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("odoo: oldsha111..newsha222", result.output)
+        # the ff merge ran attached to the terminal, with the diffstat off
+        self.assertTrue(
+            any(
+                c[-4:] == ("merge", "--ff-only", "--no-stat", "FETCH_HEAD")
+                for c in self.runner.stream_calls
+            ),
+            self.runner.stream_calls,
+        )
+
+    def test_pull_json_keeps_output_captured(self):
+        odoo = self.root / "19.0" / "odoo"
+        self.set_ahead(odoo)
+        result = self.invoke("pull", "--json")
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn('"advanced"', result.output)
+        self.assertEqual(self.runner.stream_calls, [])
+
     def test_pull_skips_diverged_with_guidance(self):
         odoo = self.root / "19.0" / "odoo"
-        self.runner.expect(
-            "git", "-C", str(odoo), "merge", "--ff-only", returncode=1
-        )
+        self.set_ahead(odoo, new="forksha333z", related=False)
         result = self.invoke("pull")
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("skipped odoo: diverged from origin/19.0", result.output)

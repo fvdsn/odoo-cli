@@ -15,7 +15,9 @@ class _R:
 
 
 class FakeGit:
-    """Scripted by checkout dir name (odoo, documentation, …)."""
+    """Scripted by checkout dir name (odoo, documentation, …). Ancestry is a
+    linear `history_by` list of shas (oldest first); shas absent from it are
+    unrelated (diverged)."""
 
     def __init__(self):
         self.branch = "19.0"
@@ -23,7 +25,11 @@ class FakeGit:
         self.dirty_names: set[str] = set()
         self.fetch_by: dict[str, _R] = {}
         self.merge_by: dict[str, _R] = {}
-        self.heads_by: dict[str, list[str]] = {}
+        self.head_by: dict[str, str] = {}
+        self.fetch_head_by: dict[str, str] = {}
+        self.history_by: dict[str, list[str]] = {}
+        self.stream_rc_by: dict[str, int] = {}
+        self.streamed: list[str] = []
 
     def current_branch(self, p):
         return self.branch_by.get(p.name, self.branch)
@@ -37,9 +43,21 @@ class FakeGit:
     def merge_ff_only(self, p, ref="FETCH_HEAD"):
         return self.merge_by.get(p.name, _R(0))
 
+    def merge_ff_only_streamed(self, p, ref="FETCH_HEAD"):
+        self.streamed.append(p.name)
+        return self.stream_rc_by.get(p.name, 0)
+
     def head_commit(self, p):
-        seq = self.heads_by.setdefault(p.name, ["a1b2c3d4e", "a1b2c3d4e"])
-        return seq.pop(0) if len(seq) > 1 else seq[0]
+        return self.head_by.get(p.name, "a1b2c3d4e")
+
+    def commit_of(self, p, ref):
+        return self.fetch_head_by.get(p.name, self.head_commit(p))
+
+    def is_ancestor(self, p, ancestor, descendant):
+        history = self.history_by.get(p.name, [])
+        if ancestor not in history or descendant not in history:
+            return False
+        return history.index(ancestor) <= history.index(descendant)
 
 
 class PullServiceTest(unittest.TestCase):
@@ -53,25 +71,55 @@ class PullServiceTest(unittest.TestCase):
         self.worktree = Worktree(name="19.0", path=self.root / "19.0")
         self.git = FakeGit()
 
-    def pull(self, worktree=None):
-        return PullService(self.git).pull(self.workspace, worktree or self.worktree)
+    def pull(self, worktree=None, stream=False):
+        return PullService(self.git).pull(
+            self.workspace, worktree or self.worktree, stream=stream
+        )
 
     def by_repo(self, result):
         return {o.repo: o for o in result.outcomes}
+
+    def set_behind(self, name, old="oldsha111x", new="newsha222y"):
+        """Script a checkout whose FETCH_HEAD is strictly ahead of HEAD."""
+        self.git.head_by[name] = old
+        self.git.fetch_head_by[name] = new
+        self.git.history_by[name] = [old, new]
 
     def test_up_to_date_when_head_unchanged(self):
         out = self.by_repo(self.pull())
         self.assertEqual(set(out), {"odoo", "documentation"})
         self.assertEqual(out["odoo"].status, UP_TO_DATE)
 
+    def test_up_to_date_when_fetch_head_is_behind(self):
+        self.set_behind("odoo", old="newsha222y", new="oldsha111x")
+        self.git.history_by["odoo"] = ["oldsha111x", "newsha222y"]
+        out = self.by_repo(self.pull())
+        self.assertEqual(out["odoo"].status, UP_TO_DATE)
+
     def test_advanced_reports_the_range(self):
-        self.git.heads_by["odoo"] = ["oldsha111x", "newsha222y"]
+        self.set_behind("odoo")
         out = self.by_repo(self.pull())
         self.assertEqual(out["odoo"].status, ADVANCED)
         self.assertEqual(out["odoo"].detail, "oldsha111..newsha222")
 
+    def test_streamed_merge_when_requested(self):
+        self.set_behind("odoo")
+        out = self.by_repo(self.pull(stream=True))
+        self.assertEqual(out["odoo"].status, ADVANCED)
+        # only the checkout that actually fast-forwards streams a merge
+        self.assertEqual(self.git.streamed, ["odoo"])
+
+    def test_interrupted_merge_points_at_recovery(self):
+        self.set_behind("odoo")
+        self.git.stream_rc_by["odoo"] = 130
+        out = self.by_repo(self.pull(stream=True))["odoo"]
+        self.assertEqual(out.status, SKIPPED)
+        self.assertIn("did not finish", out.detail)
+        self.assertIn("reset --hard FETCH_HEAD", out.detail)
+
     def test_diverged_is_skipped_with_rebase_guidance(self):
-        self.git.merge_by["odoo"] = _R(1)
+        self.git.head_by["odoo"] = "oldsha111x"
+        self.git.fetch_head_by["odoo"] = "forksha333z"
         out = self.by_repo(self.pull())["odoo"]
         self.assertEqual(out.status, SKIPPED)
         self.assertIn("diverged from origin/19.0", out.detail)

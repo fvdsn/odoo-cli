@@ -92,7 +92,13 @@ the branch name via `infer_base_version` (`19.0-fix` → `19.0`; `master` →
   the worktree.
 - For each checkout: `base = infer_base_version(branch)`; fetch `origin <base>`
   by name (sidesteps the mirror ambiguity — we always read origin's real tip),
-  then **`merge --ff-only`**. Outcomes:
+  then **`merge --ff-only`**. Outside `--json` the merge streams to the
+  terminal: on a blobless clone a big fast-forward downloads every changed
+  file, and minutes of silence invite the Ctrl-C that leaves the working tree
+  mixing two commits. Divergence is decided beforehand with
+  `merge-base --is-ancestor` (a streamed merge has no captured stderr to
+  classify), so a merge failure can only mean the checkout itself died.
+  Outcomes:
   - **advanced** (`<old>..<new>`) or **already up to date** — the happy path for
     version worktrees and not-yet-diverged feature branches.
   - **skipped, diverged** — a feature branch with its own commits can't
@@ -102,6 +108,10 @@ the branch name via `infer_base_version` (`19.0-fix` → `19.0`; `master` →
     no `<base>` branch (e.g. an addon repo branched off its default branch).
   - **skipped, uncommitted changes** — the checkout is dirty; commit or stash
     first.
+  - **skipped, interrupted fast-forward** — the merge died mid-checkout
+    (Ctrl-C, network drop while fetching blobs); the working tree may mix two
+    commits. Print the exact `git -C <checkout> reset --hard FETCH_HEAD` that
+    finishes the update.
 - **Never interactive, per-repo, non-destructive.** ff-only only; one repo that
   can't advance is skipped with guidance, the rest still pull; a final summary
   lists what moved and what was skipped. No `--rebase`/`--merge` flags (they can

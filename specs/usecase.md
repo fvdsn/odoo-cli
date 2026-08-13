@@ -68,14 +68,15 @@ Expected workspace setup:
 
 ```ini
 [options]
-db_host = False
-db_port = False
-db_user = False
-db_password = False
 dev_mode = all
 without_demo = False
 log_level = warn
 ```
+
+(The postgres connection keys — `db_host`, `db_port`, `db_user`,
+`db_password` — are not written: absent means "local defaults", and odoo-bin
+warns about non-boolean options holding the literal `False`. `odoo config set
+db_host …` adds them when needed.)
 
 Source of truth:
 

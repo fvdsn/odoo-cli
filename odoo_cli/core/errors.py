@@ -85,6 +85,11 @@ class PostgresError(OdooCliError):
     pass
 
 
+class ReportDepsError(OdooCliError):
+    """A report-rendering system dependency (wkhtmltopdf, cairo) could not
+    be installed."""
+
+
 class DatabaseNotFound(OdooCliError):
     """Read-only command targeting a database that does not exist."""
 

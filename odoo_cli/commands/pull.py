@@ -23,7 +23,13 @@ def pull(ctx: CliContext, worktree: str | None, as_json: bool) -> None:
     if as_json:
         out.json_mode = True
     target = services.targets.resolve(worktree=worktree)
-    result = services.pull.pull(target.workspace, target.worktree)
+    # Announce before pulling: the ff merge streams git's progress to the
+    # terminal (JSON mode keeps output captured so stdout stays parseable).
+    if not as_json:
+        out.echo(f"Pulling worktree {target.worktree.name}...")
+    result = services.pull.pull(
+        target.workspace, target.worktree, stream=not as_json
+    )
 
     if as_json:
         status_names = {ADVANCED: "advanced", UP_TO_DATE: "up_to_date", SKIPPED: "skipped"}
@@ -43,7 +49,6 @@ def pull(ctx: CliContext, worktree: str | None, as_json: bool) -> None:
         )
         return
 
-    out.echo(f"Pulling worktree {result.worktree}...")
     advanced = skipped = 0
     for o in result.outcomes:
         suffix = f" (linked from {o.linked_from})" if o.linked_from else ""

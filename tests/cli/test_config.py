@@ -55,6 +55,8 @@ class TestConfig(ConfigCommandTestCase):
         self.assertIn("hunter2", reveal.output)
 
     def test_list_does_not_redact_unset_password(self):
+        # "False" is odoo's unset convention: not a secret, shown as-is
+        self.invoke("config", "set", "db_password", "False")
         result = self.invoke("config", "list")
         self.assertIn("db_password = False", result.output)
         self.assertNotIn(REDACTED, result.output)

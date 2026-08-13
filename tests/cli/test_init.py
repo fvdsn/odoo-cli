@@ -7,6 +7,7 @@ from odoo_cli.cli.context import CliContext, Services
 from odoo_cli.cli.main import cli
 from odoo_cli.core.odoo_conf import OdooConf
 from odoo_cli.core.postgres import PostgresService
+from odoo_cli.core.report_deps import ReportDepsService
 from odoo_cli.core.venvs import VenvService
 from tests.fixtures.process import FakeProcessRunner
 from tests.fixtures.workspace import make_env, version_release_py
@@ -25,9 +26,13 @@ class InitCommandTestCase(unittest.TestCase):
             "runuser": "/usr/sbin/runuser",
             "uv": "/usr/bin/uv",
             "python3.13": "/usr/bin/python3.13",
+            "wkhtmltopdf": "/usr/bin/wkhtmltopdf",
+            "pkg-config": "/usr/bin/pkg-config",
         }
         self.sockets = self.home / "sockets"
         self.cli_runner = testing.CliRunner()
+        # cairo present by default: `pkg-config --exists cairo` succeeds
+        self.runner.expect("pkg-config", stdout="")
 
     def context(self) -> CliContext:
         services = Services(process=self.runner, env=self.env)
@@ -41,6 +46,9 @@ class InitCommandTestCase(unittest.TestCase):
             environ={},
         )
         services.venvs = VenvService(self.runner, which=self.tools.get)
+        services.report_deps = ReportDepsService(
+            self.runner, which=self.tools.get, platform="linux", geteuid=lambda: 0
+        )
         return CliContext(services=services)
 
     def invoke(self, *args):
@@ -174,6 +182,76 @@ class TestInit(InitCommandTestCase):
             ),
         )
         self.assertTrue((self.root / ".repositories" / "odoo.git").is_dir())
+
+    def test_missing_wkhtmltopdf_installs(self):
+        del self.tools["wkhtmltopdf"]
+        self.tools["apt-get"] = "/usr/bin/apt-get"
+
+        def install_effect(call):
+            self.tools["wkhtmltopdf"] = "/usr/bin/wkhtmltopdf"
+
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"
+        )
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get",
+            "install", "-y", "wkhtmltopdf", effect=install_effect
+        )
+        self.runner.expect("wkhtmltopdf", "--version", stdout="0.12.6\n")
+        self.script_happy_path()
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Installed wkhtmltopdf with apt-get", result.output)
+        self.assertIn(
+            (
+                "env", "DEBIAN_FRONTEND=noninteractive", "apt-get",
+                "install", "-y", "wkhtmltopdf",
+            ),
+            self.runner.stream_calls,
+        )
+
+    def test_wkhtmltopdf_install_failure_warns_and_continues(self):
+        # no apt-get: the plan itself fails — unlike postgres this must not
+        # block the workspace bootstrap
+        del self.tools["wkhtmltopdf"]
+        self.script_happy_path()
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Workspace ready", result.output)
+        self.assertIn("will fail until wkhtmltopdf is installed", result.stderr)
+
+    def test_missing_cairo_installs(self):
+        del self.tools["pkg-config"]
+        self.tools["apt-get"] = "/usr/bin/apt-get"
+
+        def install_effect(call):
+            self.tools["pkg-config"] = "/usr/bin/pkg-config"
+
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get", "update"
+        )
+        self.runner.expect_stream(
+            "env", "DEBIAN_FRONTEND=noninteractive", "apt-get",
+            "install", "-y", "libcairo2-dev", "pkg-config",
+            effect=install_effect,
+        )
+        self.script_happy_path()
+
+        result = self.invoke("init")
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("Installed cairo with apt-get", result.output)
+        self.assertIn(
+            (
+                "env", "DEBIAN_FRONTEND=noninteractive", "apt-get",
+                "install", "-y", "libcairo2-dev", "pkg-config",
+            ),
+            self.runner.stream_calls,
+        )
 
     def test_missing_postgres_without_supported_manager_fails_before_cloning(self):
         del self.tools["psql"]
@@ -369,7 +447,7 @@ class TestInit(InitCommandTestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("ports 5433, 5434", result.output)
         conf = OdooConf.load(self.home / ".config" / "odoo" / "odoo.conf")
-        self.assertEqual(conf.get("db_port"), "False")
+        self.assertIsNone(conf.get("db_port"))  # ambiguous: stays unset
 
     def test_connection_failure_with_explicit_target_does_not_probe(self):
         conf_path = self.home / ".config" / "odoo" / "odoo.conf"

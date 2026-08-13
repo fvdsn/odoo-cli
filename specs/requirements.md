@@ -105,6 +105,16 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
 ## Venv strategy
  - one venv per odoo version, shared across worktrees on the same version
  - rationale: the venv created from `requirements.txt` is often not enough for comfortable local dev; optional dependencies may be needed in practice, and developers should not have to recreate those additions for every worktree
+ - venv creation installs a small set of pure-python extras alongside
+   `requirements.txt`: `websocket-client` (drives the Chrome connection for
+   browser/tour tests; without it every `HttpCase` tour is silently skipped)
+   and `watchdog` (powers `--dev` autoreload, which the CLI enables by
+   default via `dev_mode = all`)
+ - venv creation also installs `rlPyCairo` — reportlab 4.x's barcode/QR PNG
+   backend, which Odoo's requirements.txt omits (its Debian package covers
+   it); pycairo ships no macOS/Linux wheels, so this is best-effort and
+   gated on pkg-config finding the cairo system library (`odoo init`
+   installs it)
  - version is determined by reading `odoo/odoo/release.py` in the worktree
  - the worktree version is never stored; the checked-out source is the source of truth
  - the resolved venv for a worktree is `.venvs/{version}`; there is no per-worktree venv override in v1
@@ -173,10 +183,14 @@ the shared `odoo.conf` (see "Configuration via odoo.conf").
    exact command to reproduce a CLI run manually
  - `odoo init` warns when `~/.odoorc` exists or `ODOO_RC` is set, because manual
    odoo-bin runs would resolve those instead of the shared `odoo.conf`
- - `odoo init` creates this file with good defaults (postgres connection, dev
-   mode, demo data, log level) only when it does not exist; an existing file is
-   never modified — init reports expected keys that are missing and suggests
-   `odoo config set`
+ - `odoo init` creates this file with good defaults (dev mode, demo data, log
+   level) only when it does not exist; an existing file is never modified —
+   init reports expected keys that are missing and suggests `odoo config set`
+ - the postgres connection keys (`db_host`, `db_port`, `db_user`,
+   `db_password`) are not written by default: absent already means "local
+   defaults", and odoo-bin warns on every run about non-boolean options
+   holding the literal string `False`. They are added by `odoo config set`
+   (or init's port detection) when a non-default connection is needed
  - `odoo config set` preserves unknown keys but rewrites the file with
    `configparser`: comments and formatting are not preserved (accepted v1
    limitation, stated plainly in the command help)
@@ -526,6 +540,20 @@ v2 server lifecycle.
      on non-standard ports (`.s.PGSQL.<port>` socket files, `pg_lsclusters`);
      if exactly one answers, save its port as `db_port`; if several answer,
      list them in the warning
+ - wkhtmltopdf (odoo-bin's default PDF engine): check if installed, installing
+   it when the binary is missing — best-effort, unlike postgres: any failure
+   warns and init continues (a workspace without a PDF engine still runs;
+   reports and their tests fail until it is installed)
+   - Debian/Ubuntu/WSL: `apt-get install -y wkhtmltopdf`
+   - macOS: the project is discontinued and gone from Homebrew, so download
+     the last official .pkg (0.12.6-2, x86_64) from the wkhtmltopdf/packaging
+     GitHub releases and run `installer` with sudo; on Apple Silicon the
+     binary needs Rosetta 2 — when it does not run after install, warn with
+     the `softwareupdate --install-rosetta` command
+ - cairo + pkg-config (barcode/QR rendering through reportlab): same
+   best-effort check and install (`brew install cairo pkg-config` on macOS,
+   `apt-get install -y libcairo2-dev pkg-config` on Debian/Ubuntu); with
+   cairo present, venv creation adds the `rlPyCairo` backend
 
 ### `odoo config` [v1]
 Non-interactive workspace configuration: a thin, scriptable front over the shared
@@ -710,9 +738,18 @@ connection, enterprise, dev mode, etc.) is deferred to v2 — see
  - pulls latest changes across the repos
 
 ### `odoo test $MODULE [-t $TAG]` [v1]
- - creates or reuses a test db and runs the tests
+ - recreates the test db (database and filestore) from scratch on every run;
+   `--keep-db` reuses the existing one instead (faster reruns)
  - the test db is named `{database}-test` (default: `{worktree}-test`);
    derived by convention, never stored
+ - rationale for fresh-by-default: at_install tests run per module during
+   loading, with a registry of only the modules loaded so far — a test db
+   carrying the schema of a previous run breaks them (inserts hit NOT NULL
+   columns of not-yet-loaded modules)
+ - with `--keep-db`, modules already installed in the test db are passed to
+   odoo-bin with `-u` (their tests run again) and only missing ones with
+   `-i`: odoo-bin runs tests solely for modules installed/updated in the
+   current process, so `-i` alone on a reused test db would run zero tests
  - only outputs final test results by default
  - `$MODULE`: module name, `installed` (modules installed in the database), or `all` (every addon)
  - `-t test_foo` resolves to the correct odoo test tag format automatically

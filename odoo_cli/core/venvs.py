@@ -25,6 +25,20 @@ from odoo_cli.util.process import ProcessRunner
 
 READY_MARKER = ".odoo-cli-ready"
 
+#: Pure-python extras installed alongside requirements.txt. Odoo does not
+#: list them but a dev setup is crippled without them: websocket-client
+#: drives the Chrome connection for browser/tour tests (absent, every
+#: HttpCase tour is silently skipped), watchdog powers --dev autoreload
+#: (the CLI defaults dev_mode = all).
+EXTRA_PACKAGES = ("websocket-client", "watchdog")
+
+#: reportlab 4.x renders barcodes/QR codes (invoice QR, receipts) through
+#: this backend; its pycairo dependency ships no macOS/Linux wheels and
+#: builds from source against the cairo system library (`odoo init`
+#: installs it). Installed separately and best-effort: without cairo the
+#: build cannot succeed and must not break venv creation.
+CAIRO_BACKEND_PACKAGE = "rlPyCairo"
+
 
 @dataclass
 class VenvResult:
@@ -111,9 +125,26 @@ class VenvService:
                 ),
             )
         self._install_requirements(path, worktree, uv)
+        self._install_cairo_backend(path)
         self._install_manifest_deps(path, worktree)
         path.mkdir(parents=True, exist_ok=True)  # no-op after a real create
         (path / READY_MARKER).touch()
+
+    def _install_cairo_backend(self, path: Path) -> None:
+        """Install rlPyCairo when the cairo library is present (the same
+        pkg-config probe the pycairo build performs); skipped silently
+        otherwise — the build could only fail."""
+        from odoo_cli.util.process import ProcessError
+
+        if not self.which("pkg-config"):
+            return
+        probe = self.runner.run(["pkg-config", "--exists", "cairo"], check=False)
+        if probe.returncode != 0:
+            return
+        try:
+            self.install_packages(path, [CAIRO_BACKEND_PACKAGE])
+        except ProcessError:
+            pass  # best-effort: see CAIRO_BACKEND_PACKAGE
 
     def _install_manifest_deps(self, path: Path, worktree: Worktree) -> None:
         """Manifest external_dependencies.python beyond requirements.txt
@@ -149,10 +180,14 @@ class VenvService:
         python = self.python_path(path)
         if uv:
             self.runner.run(
-                ["uv", "pip", "install", "--python", python, "-r", requirements]
+                ["uv", "pip", "install", "--python", python, "-r", requirements,
+                 *EXTRA_PACKAGES]
             )
         else:
-            self.runner.run([python, "-m", "pip", "install", "-r", requirements])
+            self.runner.run(
+                [python, "-m", "pip", "install", "-r", requirements,
+                 *EXTRA_PACKAGES]
+            )
 
     def _find_interpreter(self, info: release.ReleaseInfo) -> str | None:
         """Highest `pythonX.Y` on PATH within [MIN_PY_VERSION, MAX_PY_VERSION]."""

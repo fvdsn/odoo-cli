@@ -12,6 +12,7 @@ from odoo_cli.core.database import DatabaseService
 from odoo_cli.core.modules import ModuleService
 from odoo_cli.core.odoo_bin import OdooBinService
 from odoo_cli.core.postgres import PostgresService
+from odoo_cli.core.report_deps import ReportDepsService
 from odoo_cli.core.repositories import RepositoryService
 from odoo_cli.core.server import RunStateStore, ServerService
 from odoo_cli.core.shell import ShellService
@@ -73,6 +74,10 @@ class Services:
     @cached_property
     def postgres(self) -> PostgresService:
         return PostgresService(self.process)
+
+    @cached_property
+    def report_deps(self) -> ReportDepsService:
+        return ReportDepsService(self.process)
 
     @cached_property
     def odoo_bin(self) -> OdooBinService:

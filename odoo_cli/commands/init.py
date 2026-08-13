@@ -12,6 +12,7 @@ from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext, Services
 from odoo_cli.cli.output import Output
 from odoo_cli.core import agent_assets
+from odoo_cli.core.errors import OdooCliError
 from odoo_cli.core.models import Workspace, Worktree
 from odoo_cli.core.odoo_conf import OdooConf, is_set
 from odoo_cli.core.repositories import DEFAULT_REPOS
@@ -46,6 +47,25 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
         out.echo(f"Installed PostgreSQL with {result.manager}")
         for warning in result.warnings:
             out.warn(warning)
+
+    # best-effort, unlike postgres: a workspace without these still runs;
+    # PDF reports / barcode rendering and their tests fail until installed
+    if not services.report_deps.wkhtmltopdf_installed():
+        _install_report_dep(
+            services, out, "wkhtmltopdf",
+            "wkhtmltopdf (the PDF engine for reports)",
+            services.report_deps.wkhtmltopdf_plan,
+            services.report_deps.install_wkhtmltopdf,
+        )
+    if not services.report_deps.cairo_installed():
+        # cairo before the venv exists: the venv build then picks up
+        # rlPyCairo (barcode/QR rendering for reportlab)
+        _install_report_dep(
+            services, out, "cairo",
+            "cairo (barcode and QR code rendering)",
+            services.report_deps.cairo_plan,
+            services.report_deps.install_cairo,
+        )
 
     root = services.workspace.create_skeleton()
 
@@ -152,6 +172,25 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
 
     out.success(f"Workspace ready at {workspace.root}")
     out.echo(f"Next: cd {worktree.path} && odoo start")
+
+
+def _install_report_dep(
+    services: Services, out: Output, dep: str, label: str, plan, install
+) -> None:
+    """Install one report-rendering system dependency, warn-only on failure."""
+    try:
+        out.echo(f"{label} is not installed; installing with {plan().manager}...")
+        result = install()
+    except OdooCliError as exc:
+        hint = f" ({exc.hint})" if exc.hint else ""
+        out.warn(
+            f"{exc.message}{hint}; PDF reports / barcode rendering and "
+            f"their tests will fail until {dep} is installed"
+        )
+        return
+    out.echo(f"Installed {dep} with {result.manager}")
+    for warning in result.warnings:
+        out.warn(warning)
 
 
 def _setup_agent_context(

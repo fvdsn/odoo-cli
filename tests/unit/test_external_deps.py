@@ -141,6 +141,7 @@ class VenvManifestDepsTestCase(ExternalDepsTestCase):
         venv = service.venv_path(workspace, self.worktree)
         python = str(service.python_path(venv))
         runner.expect("/usr/bin/python3.13", stdout="")  # venv creation
+        runner.expect("pkg-config", returncode=1)  # no cairo: no rlPyCairo
         runner.expect(python, "-c", stdout="phonenumbers\n")  # probe: missing
         runner.expect(python, "-m", "pip", "install", stdout="")
         result = service.rebuild(workspace, self.worktree)

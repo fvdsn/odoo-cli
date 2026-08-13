@@ -82,6 +82,32 @@ class Git:
             ["git", "-C", checkout, "merge", "--ff-only", ref], check=False
         )
 
+    def merge_ff_only_streamed(self, checkout: Path, ref: str = "FETCH_HEAD") -> int:
+        """Fast-forward with output attached to the terminal, so a long
+        checkout shows git's progress instead of running silently. `--no-stat`
+        keeps a large fast-forward from ending in a huge diffstat. Returns the
+        exit code."""
+        return self._runner.stream(
+            ["git", "-C", checkout, "merge", "--ff-only", "--no-stat", ref]
+        )
+
+    def commit_of(self, checkout: Path, ref: str) -> str | None:
+        """Resolve a ref in a checkout to a commit sha, or None when it does
+        not resolve."""
+        result = self._runner.run(
+            ["git", "-C", checkout, "rev-parse", "--verify", "--quiet", ref],
+            check=False,
+        )
+        sha = result.stdout.strip()
+        return sha if result.returncode == 0 and sha else None
+
+    def is_ancestor(self, checkout: Path, ancestor: str, descendant: str) -> bool:
+        result = self._runner.run(
+            ["git", "-C", checkout, "merge-base", "--is-ancestor", ancestor, descendant],
+            check=False,
+        )
+        return result.returncode == 0
+
     def config_get(self, repo: Path, key: str) -> str | None:
         result = self._runner.run(
             ["git", "-C", repo, "config", "--get", key], check=False

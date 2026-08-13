@@ -65,14 +65,14 @@ class TestWorkspaceResolver(WorkspaceTestCase):
         self.assertTrue(created)
         self.assertEqual(missing, [])
         conf_path = resolver.conf_path
-        conf_path.write_text("[options]\ndb_host = localhost\n")
+        conf_path.write_text("[options]\ndb_host = localhost\ndev_mode = all\n")
         created, missing = resolver.ensure_default_conf()
         self.assertFalse(created)
-        self.assertIn("db_user", missing)
-        self.assertNotIn("db_host", missing)
+        self.assertIn("log_level", missing)
+        self.assertNotIn("dev_mode", missing)
         # the existing file was not modified
         self.assertEqual(
-            conf_path.read_text(), "[options]\ndb_host = localhost\n"
+            conf_path.read_text(), "[options]\ndb_host = localhost\ndev_mode = all\n"
         )
 
     def test_rcfile_warnings(self):

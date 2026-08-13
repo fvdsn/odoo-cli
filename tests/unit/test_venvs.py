@@ -64,6 +64,7 @@ class TestEnsure(VenvTestCase):
             (
                 "uv", "pip", "install", "--python", str(venv / "bin" / "python"),
                 "-r", str(wt.path / "odoo" / "requirements.txt"),
+                "websocket-client", "watchdog",
             ),
         )
         self.assertTrue((venv / READY_MARKER).is_file())
@@ -109,6 +110,50 @@ class TestEnsure(VenvTestCase):
         result = self.service().ensure(self.workspace, wt)
         self.assertFalse(result.created)
         self.assertEqual(self.runner.calls, [])
+
+    def test_cairo_backend_installed_when_cairo_present(self):
+        self.available = {
+            "uv": "/usr/bin/uv",
+            "python3.13": "/usr/bin/python3.13",
+            "pkg-config": "/usr/bin/pkg-config",
+        }
+        self.runner.expect("uv", stdout="")
+        self.runner.expect("pkg-config", "--exists", "cairo", returncode=0)
+        self.service().ensure(self.workspace, self.worktree())
+        python = str(self.root / ".venvs" / "19.0" / "bin" / "python")
+        self.assertIn(
+            ("uv", "pip", "install", "--python", python, "rlPyCairo"),
+            self.runner.calls,
+        )
+
+    def test_cairo_backend_skipped_without_cairo(self):
+        # without the system library the pycairo build can only fail
+        self.available = {
+            "uv": "/usr/bin/uv",
+            "python3.13": "/usr/bin/python3.13",
+            "pkg-config": "/usr/bin/pkg-config",
+        }
+        self.runner.expect("uv", stdout="")
+        self.runner.expect("pkg-config", "--exists", "cairo", returncode=1)
+        self.service().ensure(self.workspace, self.worktree())
+        self.assertFalse(any("rlPyCairo" in c for c in self.runner.calls))
+
+    def test_cairo_backend_failure_does_not_block_the_venv(self):
+        self.available = {
+            "uv": "/usr/bin/uv",
+            "python3.13": "/usr/bin/python3.13",
+            "pkg-config": "/usr/bin/pkg-config",
+        }
+        self.runner.expect("uv", stdout="")
+        self.runner.expect("pkg-config", "--exists", "cairo", returncode=0)
+        python = str(self.root / ".venvs" / "19.0" / "bin" / "python")
+        self.runner.expect(
+            "uv", "pip", "install", "--python", python, "rlPyCairo",
+            returncode=1,
+        )
+        result = self.service().ensure(self.workspace, self.worktree())
+        self.assertTrue(result.created)
+        self.assertTrue((self.root / ".venvs" / "19.0" / READY_MARKER).is_file())
 
     def test_incomplete_venv_is_recreated_from_scratch(self):
         self.available = {"uv": "/usr/bin/uv"}
