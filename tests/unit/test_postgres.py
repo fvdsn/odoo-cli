@@ -5,7 +5,11 @@ from pathlib import Path
 from odoo_cli.core.errors import PostgresError
 from odoo_cli.core.odoo_conf import OdooConf
 from odoo_cli.core.postgres import PostgresService
-from tests.fixtures.process import FakeProcessRunner, createdb_call
+from tests.fixtures.process import (
+    FakeProcessRunner,
+    createdb_call,
+    createdb_from_template,
+)
 
 
 class PostgresTestCase(unittest.TestCase):
@@ -71,18 +75,52 @@ class TestDatabases(PostgresTestCase):
         self.runner.expect("psql", stdout="\n")
         self.assertFalse(self.service.db_exists(self.conf, "x"))
 
+    def _template_exists(self, exists: bool):
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = 'template_odoo'",
+            stdout="1\n" if exists else "",
+        )
+
     def test_create_db_matches_odoo_creation_semantics(self):
         # same CREATE DATABASE as odoo/service/db.py: a bare `createdb`
         # would inherit the cluster locale and sort unlike an odoo db
+        self._template_exists(False)
         self.runner.expect("createdb", stdout="")
         self.service.create_db(self.conf, "x")
         self.assertIn(createdb_call("x"), self.runner.calls)
 
+    def test_create_db_clones_template_when_present(self):
+        # the clone inherits C collation and the pre-installed extensions
+        self._template_exists(True)
+        self.runner.expect("createdb", stdout="")
+        self.service.create_db(self.conf, "x")
+        self.assertIn(createdb_from_template("x"), self.runner.calls)
+
     def test_create_db_failure_is_typed(self):
+        self._template_exists(False)
         self.runner.expect("createdb", returncode=1, stderr="permission denied")
         with self.assertRaises(PostgresError) as cm:
             self.service.create_db(self.conf, "x")
         self.assertIn("permission denied", cm.exception.hint)
+
+    def test_ensure_template_creates_with_extensions(self):
+        self._template_exists(False)
+        self.runner.expect("createdb", stdout="")
+        self.runner.expect("psql", stdout="")  # extension/alter statements
+        self.assertTrue(self.service.ensure_template(self.conf))
+        self.assertIn(createdb_call("template_odoo"), self.runner.calls)
+        statements = " ".join(
+            c[3] for c in self.runner.calls if c[0] == "psql" and len(c) > 3
+        )
+        for ext in ("pg_trgm", "unaccent", "fuzzystrmatch", "vector"):
+            self.assertIn(ext, statements)
+        self.assertIn("IMMUTABLE", statements)
+
+    def test_ensure_template_noop_when_present(self):
+        self._template_exists(True)
+        self.assertFalse(self.service.ensure_template(self.conf))
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
 
     def test_drop_terminates_connections_first(self):
         self.runner.expect("psql", stdout="")

@@ -6,7 +6,10 @@ from odoo_cli.cli._click import testing
 from odoo_cli.cli.context import CliContext, Services
 from odoo_cli.cli.main import cli
 from odoo_cli.core.venvs import READY_MARKER
-from tests.fixtures.process import FakeProcessRunner, createdb_call
+from tests.fixtures.process import (
+    FakeProcessRunner,
+    createdb_from_template,
+)
 from tests.fixtures.workspace import make_env, make_workspace, make_worktree
 
 
@@ -52,7 +55,7 @@ class TestTestCommand(TestShellCommandsTestCase):
         # the leftover test db (broad psql: exists) was recreated, so the
         # run starts from a schema matching exactly the modules it loads
         self.assertIn(("dropdb", "19.0-test"), self.runner.calls)
-        self.assertIn(createdb_call("19.0-test"), self.runner.calls)
+        self.assertIn(createdb_from_template("19.0-test"), self.runner.calls)
 
     def test_creates_missing_test_database(self):
         self.runner.expect(
@@ -63,7 +66,7 @@ class TestTestCommand(TestShellCommandsTestCase):
         self.runner.expect("createdb", stdout="")
         result = self.invoke("test", "crm")
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertIn(createdb_call("19.0-test"), self.runner.calls)
+        self.assertIn(createdb_from_template("19.0-test"), self.runner.calls)
 
     def test_keep_db_rerun_updates_modules_in_test_db(self):
         # the installed-modules expectation matches both the target db and

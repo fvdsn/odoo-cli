@@ -14,12 +14,19 @@ from odoo_cli.util.process import ProcessError, ProcessResult
 
 
 def createdb_call(name: str) -> tuple[str, ...]:
-    """The exact argv `PostgresService.create_db` runs: odoo's own creation
-    semantics (encoding, C collation, template0)."""
+    """The exact argv `PostgresService.create_db` runs when the shared
+    template is absent: odoo's own creation semantics (encoding, C
+    collation, template0)."""
     return (
         "createdb", "--encoding=UTF8", "--lc-collate=C",
         "--template=template0", name,
     )
+
+
+def createdb_from_template(name: str) -> tuple[str, ...]:
+    """The argv `PostgresService.create_db` runs when template_odoo exists:
+    the clone inherits its C collation and pre-installed extensions."""
+    return ("createdb", "--template=template_odoo", name)
 
 
 class FakeProcessRunner:

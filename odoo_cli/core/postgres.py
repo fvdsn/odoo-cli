@@ -284,12 +284,68 @@ class PostgresService:
         )
         return bool(rows)
 
+    #: The template every odoo database is cloned from (same convention as
+    #: the runbot maintainer's dev setup): template0 + C collation + the
+    #: extensions odoo uses when present. `db_template` in odoo.conf makes
+    #: odoo-bin's own `db init` clone it too.
+    TEMPLATE_DB = "template_odoo"
+
+    #: Created inside the template; all are `trusted` (db owner may create
+    #: them without superuser) and ship with postgres contrib. `vector`
+    #: (pgvector) is added separately, best-effort: not trusted and not
+    #: always installed.
+    TEMPLATE_EXTENSIONS = ("pg_trgm", "unaccent", "fuzzystrmatch")
+
+    def ensure_template(self, conf: OdooConf) -> bool:
+        """Create TEMPLATE_DB when missing: C collation and the extensions
+        pre-installed, so every clone starts fuzzy-search-ready (the
+        word_similarity/unaccent SQL paths need them; odoo only probes, it
+        never creates them). Returns True when it was created."""
+        if self.db_exists(conf, self.TEMPLATE_DB):
+            return False
+        self._create_from_template0(conf, self.TEMPLATE_DB)
+        statements = [
+            f"CREATE EXTENSION IF NOT EXISTS {ext} WITH SCHEMA public"
+            for ext in self.TEMPLATE_EXTENSIONS
+        ]
+        # unaccent() is only usable in indexes and generated columns when
+        # marked immutable (it is stable by default; odoo assumes immutable)
+        statements.append("ALTER FUNCTION public.unaccent(text) IMMUTABLE")
+        for statement in statements:
+            self.sql(conf, self.TEMPLATE_DB, statement)
+        try:
+            self.sql(
+                conf, self.TEMPLATE_DB,
+                "CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public",
+            )
+        except PostgresError:
+            pass  # pgvector absent or not superuser: fine, feature-gated
+        return True
+
     def create_db(self, conf: OdooConf, name: str) -> None:
         """Create an empty database the way odoo itself does (service/db.py:
         `ENCODING 'unicode' LC_COLLATE 'C' TEMPLATE template0`). C collation
         matters: it is deterministic across OSes and lets plain B-tree
         indexes serve LIKE-prefix searches; a bare `createdb` would inherit
-        the cluster locale and sort differently than an odoo-created db."""
+        the cluster locale and sort differently than an odoo-created db.
+
+        Cloning TEMPLATE_DB (when present) adds the pre-installed
+        extensions on top of the same collation semantics."""
+        if self.db_exists(conf, self.TEMPLATE_DB):
+            try:
+                self.runner.run(
+                    ["createdb", f"--template={self.TEMPLATE_DB}", name],
+                    extra_env=self.env(conf),
+                )
+                return
+            except ProcessError as exc:
+                raise PostgresError(
+                    f"could not create database '{name}'",
+                    hint=exc.result.stderr.strip() or None,
+                ) from exc
+        self._create_from_template0(conf, name)
+
+    def _create_from_template0(self, conf: OdooConf, name: str) -> None:
         try:
             self.runner.run(
                 [

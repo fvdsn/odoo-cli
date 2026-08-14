@@ -12,7 +12,7 @@ from odoo_cli.cli._click import click
 from odoo_cli.cli.context import CliContext, Services
 from odoo_cli.cli.output import Output
 from odoo_cli.core import agent_assets
-from odoo_cli.core.errors import OdooCliError
+from odoo_cli.core.errors import OdooCliError, PostgresError
 from odoo_cli.core.models import Workspace, Worktree
 from odoo_cli.core.odoo_conf import OdooConf, is_set
 from odoo_cli.core.repositories import DEFAULT_REPOS
@@ -168,10 +168,42 @@ def init(ctx: CliContext, version: str | None, full: bool, no_demo_data: bool) -
     if not services.postgres.check_connection(workspace.config):
         _configure_detected_port(services, out, workspace.config)
 
+    _ensure_db_template(services, out, workspace.config, conf_created=created)
+
     _setup_agent_context(services, out, workspace, worktree)
 
     out.success(f"Workspace ready at {workspace.root}")
     out.echo(f"Next: cd {worktree.path} && odoo start")
+
+
+def _ensure_db_template(
+    services: Services, out: Output, conf, *, conf_created: bool
+) -> None:
+    """Create the shared db template (C collation + extensions) and point
+    odoo.conf's db_template at it, so odoo-bin's own `db init` clones it
+    too. Warn-only: a workspace without it still runs — database creation
+    falls back to template0. db_template is only written into a conf this
+    init created (init never modifies an existing file), and only once the
+    template really exists — a conf pointing at a missing template would
+    break every creation."""
+    template = services.postgres.TEMPLATE_DB
+    try:
+        if services.postgres.ensure_template(conf):
+            out.echo(f"Created database template {template}")
+    except PostgresError as exc:
+        out.warn(f"could not create the database template: {exc}")
+        return
+    if is_set(conf.get("db_template")):
+        return
+    if conf_created:
+        conf.set("db_template", template)
+        conf.save()
+    else:
+        out.warn(
+            f"db_template is not set; new databases created by odoo-bin "
+            f"won't inherit {template} (use `odoo config set db_template "
+            f"{template}`)"
+        )
 
 
 def _install_report_dep(

@@ -53,6 +53,12 @@ class TestingService:
             self.venvs, self.runner, target.worktree, modules, venv.path, python
         )
         conf = target.workspace.config
+        try:
+            # test dbs clone the shared template (C collation + pg_trgm,
+            # unaccent, ...): fuzzy-search tests need the extensions
+            self.database.postgres.ensure_template(conf)
+        except PostgresError:
+            pass  # no contrib or no rights: creation falls back to template0
         present: set[str] = set()
         exists = self.database.postgres.db_exists(conf, target.test_database)
         if exists and not keep_db:

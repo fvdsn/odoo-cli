@@ -88,6 +88,11 @@ class TestEnsureInitialized(DatabaseTestCase):
             "SELECT 1 FROM pg_database WHERE datname = '18.0'",
             stdout="",
         )
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "SELECT 1 FROM pg_database WHERE datname = 'template_odoo'",
+            stdout="",
+        )
         self.runner.expect("createdb", stdout="")
         created = self.service.ensure_initialized(target, python=self.python)
         self.assertTrue(created)
