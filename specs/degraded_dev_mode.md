@@ -103,3 +103,24 @@ Notes:
 - Upstream patches proving the skip-guard pattern: test_assetsbundle rtlcss
   guard, test_configmanager portability, base_setup StopIteration guard,
   fleet backport completion (branch fix-test-portability).
+
+## Upstream-first: odoo-cli is not a third source of truth
+
+Doctrine (see requirements_v3.md, "Convention migration into odoo-bin"):
+findings are proven here, upstreamed to odoo/odoo, and the CLI mechanism
+becomes a per-version polyfill that feature-detection retires. Drafted
+upstream artifacts (branch fix-test-portability in the odoo worktree):
+
+| Finding | Upstream artifact | CLI polyfill, retired when |
+|---|---|---|
+| raw createdb loses collation + extensions | `odoo-bin db create` (empty shell via _create_empty_database) | postgres.create_db; capability `native_db_create` once merged |
+| test tier undeclared | `requirements-dev.txt` (pip tier, consuming tests documented; non-pip tools as comments) | EXTRA_PACKAGES + folklore installs; venv build prefers the file when the worktree has it |
+| tests crash/fail instead of skipping on missing optional deps | skip-guard patches (test_assetsbundle rtlcss, test_lint astroid candidate) | none needed — contract point 2 becomes upstream policy |
+| environment-dependent test expectations | test_configmanager portability, base_setup guard, fleet backport completion | none — plain fixes |
+
+Already upstream, discovered during validation (no CLI mechanism needed):
+`_create_empty_database` creates pg_trgm unconditionally and unaccent (+
+IMMUTABLE) behind the `unaccent` config flag; `db_template` in odoo.conf is
+the native hook the template_odoo convergence plugs into. fuzzystrmatch /
+vector remain template-only for now (vector is created by the modules that
+need it; fuzzystrmatch has no community consumer identified).
