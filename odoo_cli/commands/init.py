@@ -188,11 +188,21 @@ def _ensure_db_template(
     break every creation."""
     template = services.postgres.TEMPLATE_DB
     try:
-        if services.postgres.ensure_template(conf):
-            out.echo(f"Created database template {template}")
+        status = services.postgres.ensure_template(conf)
     except PostgresError as exc:
         out.warn(f"could not create the database template: {exc}")
         return
+    if status.created:
+        out.echo(f"Created database template {template}")
+    if status.missing:
+        # soft requirements: odoo feature-gates on their presence (fuzzy
+        # name search, unaccented search, AI embeddings) and degrades
+        out.warn(
+            f"postgres extensions unavailable in {template}: "
+            f"{', '.join(status.missing)} — install them (contrib ships "
+            "pg_trgm/unaccent/fuzzystrmatch; pgvector is a separate "
+            "package) and re-run `odoo init` to add them"
+        )
     if is_set(conf.get("db_template")):
         return
     if conf_created:

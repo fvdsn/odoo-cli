@@ -44,6 +44,15 @@ class PostgresInstallResult:
     warnings: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class TemplateStatus:
+    """Outcome of `ensure_template`: whether the template db was created
+    this call, and which wanted extensions the instance could not provide."""
+
+    created: bool
+    missing: tuple[str, ...] = ()
+
+
 def quote_literal(value: str) -> str:
     """SQL string literal with quotes doubled. Names reaching this module are
     already validated (TargetResolver), this is the second line of defense."""
@@ -290,37 +299,49 @@ class PostgresService:
     #: odoo-bin's own `db init` clone it too.
     TEMPLATE_DB = "template_odoo"
 
-    #: Created inside the template; all are `trusted` (db owner may create
-    #: them without superuser) and ship with postgres contrib. `vector`
-    #: (pgvector) is added separately, best-effort: not trusted and not
-    #: always installed.
-    TEMPLATE_EXTENSIONS = ("pg_trgm", "unaccent", "fuzzystrmatch")
+    #: Wanted inside the template — soft requirements, every one: the trio
+    #: ships with postgres contrib (inside the brew formula and the
+    #: apt server package on modern releases, but not guaranteed on older
+    #: distros or custom builds); `vector` (pgvector) is a separate package
+    #: everywhere except Postgres.app. Odoo feature-gates on their
+    #: presence, so a template without them degrades, never breaks.
+    TEMPLATE_EXTENSIONS = ("pg_trgm", "unaccent", "fuzzystrmatch", "vector")
 
-    def ensure_template(self, conf: OdooConf) -> bool:
-        """Create TEMPLATE_DB when missing: C collation and the extensions
-        pre-installed, so every clone starts fuzzy-search-ready (the
-        word_similarity/unaccent SQL paths need them; odoo only probes, it
-        never creates them). Returns True when it was created."""
-        if self.db_exists(conf, self.TEMPLATE_DB):
-            return False
-        self._create_from_template0(conf, self.TEMPLATE_DB)
-        statements = [
-            f"CREATE EXTENSION IF NOT EXISTS {ext} WITH SCHEMA public"
-            for ext in self.TEMPLATE_EXTENSIONS
-        ]
-        # unaccent() is only usable in indexes and generated columns when
-        # marked immutable (it is stable by default; odoo assumes immutable)
-        statements.append("ALTER FUNCTION public.unaccent(text) IMMUTABLE")
-        for statement in statements:
-            self.sql(conf, self.TEMPLATE_DB, statement)
-        try:
-            self.sql(
-                conf, self.TEMPLATE_DB,
-                "CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public",
-            )
-        except PostgresError:
-            pass  # pgvector absent or not superuser: fine, feature-gated
-        return True
+    def ensure_template(self, conf: OdooConf) -> TemplateStatus:
+        """Converge TEMPLATE_DB: create it when missing (C collation), then
+        add whatever wanted extensions the instance can provide. Idempotent
+        and self-healing — re-running after installing pgvector (or on a
+        template left half-configured by an earlier failure) adds what was
+        missing. Extensions the instance cannot provide are reported, not
+        raised: the template is valuable for collation alone, and odoo only
+        probes for extensions (word_similarity, unaccent), never creates
+        them."""
+        created = False
+        if not self.db_exists(conf, self.TEMPLATE_DB):
+            self._create_from_template0(conf, self.TEMPLATE_DB)
+            created = True
+        present = set(
+            self.sql(conf, self.TEMPLATE_DB, "SELECT extname FROM pg_extension")
+        )
+        missing = []
+        for ext in self.TEMPLATE_EXTENSIONS:
+            if ext in present:
+                continue
+            try:
+                self.sql(
+                    conf, self.TEMPLATE_DB,
+                    f"CREATE EXTENSION IF NOT EXISTS {ext} WITH SCHEMA public",
+                )
+                if ext == "unaccent":
+                    # only indexable/generated-column-usable when immutable
+                    # (stable by default; odoo assumes immutable)
+                    self.sql(
+                        conf, self.TEMPLATE_DB,
+                        "ALTER FUNCTION public.unaccent(text) IMMUTABLE",
+                    )
+            except PostgresError:
+                missing.append(ext)
+        return TemplateStatus(created=created, missing=tuple(missing))
 
     def create_db(self, conf: OdooConf, name: str) -> None:
         """Create an empty database the way odoo itself does (service/db.py:

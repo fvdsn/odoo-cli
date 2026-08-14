@@ -107,8 +107,10 @@ class TestDatabases(PostgresTestCase):
     def test_ensure_template_creates_with_extensions(self):
         self._template_exists(False)
         self.runner.expect("createdb", stdout="")
-        self.runner.expect("psql", stdout="")  # extension/alter statements
-        self.assertTrue(self.service.ensure_template(self.conf))
+        self.runner.expect("psql", stdout="")  # pg_extension probe + creates
+        status = self.service.ensure_template(self.conf)
+        self.assertTrue(status.created)
+        self.assertEqual(status.missing, ())
         self.assertIn(createdb_call("template_odoo"), self.runner.calls)
         statements = " ".join(
             c[3] for c in self.runner.calls if c[0] == "psql" and len(c) > 3
@@ -117,10 +119,51 @@ class TestDatabases(PostgresTestCase):
             self.assertIn(ext, statements)
         self.assertIn("IMMUTABLE", statements)
 
-    def test_ensure_template_noop_when_present(self):
+    def test_ensure_template_reports_unavailable_extensions(self):
+        # pgvector not installed on the instance: degrade and report, never
+        # raise — the template stays valuable for its collation alone
+        self._template_exists(False)
+        self.runner.expect("createdb", stdout="")
+        self.runner.expect("psql", stdout="")  # probe + trio creates succeed
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc",
+            "CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public",
+            returncode=1, stderr='could not open extension control file',
+        )
+        status = self.service.ensure_template(self.conf)
+        self.assertTrue(status.created)
+        self.assertEqual(status.missing, ("vector",))
+
+    def test_ensure_template_heals_missing_extensions(self):
+        # template exists but was left without pg_trgm (earlier failure or
+        # later-installed contrib): converge instead of no-op
+        self.runner.expect("psql", stdout="")  # pg_trgm create (lowest prio)
         self._template_exists(True)
-        self.assertFalse(self.service.ensure_template(self.conf))
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc", "SELECT extname FROM pg_extension",
+            stdout="plpgsql\nunaccent\nfuzzystrmatch\nvector\n",
+        )
+        status = self.service.ensure_template(self.conf)
+        self.assertFalse(status.created)
+        self.assertEqual(status.missing, ())
         self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
+        statements = [c[3] for c in self.runner.calls if c[0] == "psql"]
+        self.assertTrue(any("pg_trgm" in s for s in statements))
+
+    def test_ensure_template_noop_when_complete(self):
+        self._template_exists(True)
+        self.runner.expect(
+            "psql", "--no-psqlrc", "-tAc", "SELECT extname FROM pg_extension",
+            stdout="plpgsql\npg_trgm\nunaccent\nfuzzystrmatch\nvector\n",
+        )
+        status = self.service.ensure_template(self.conf)
+        self.assertFalse(status.created)
+        self.assertEqual(status.missing, ())
+        self.assertFalse(any(c[0] == "createdb" for c in self.runner.calls))
+        # probe only: no CREATE EXTENSION statements ran
+        self.assertEqual(
+            len([c for c in self.runner.calls if c[0] == "psql"]), 2
+        )
 
     def test_drop_terminates_connections_first(self):
         self.runner.expect("psql", stdout="")
